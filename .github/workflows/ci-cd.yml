@@ -1,0 +1,66 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # CI: every push and pull request must install and build cleanly.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Server - install
+        run: npm ci --prefix server
+      - name: Server - syntax check
+        run: find server/src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Client - install
+        run: npm ci --prefix client
+      - name: Client - build
+        run: npm run build --prefix client
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          retention-days: 7
+
+  # CD: only pushes to main deploy. Needs repo secrets NETLIFY_AUTH_TOKEN and
+  # NETLIFY_SITE_ID (Settings -> Secrets and variables -> Actions).
+  deploy-client:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: dist
+      - name: Deploy to Netlify
+        run: npx --yes netlify-cli@latest deploy --prod --dir=dist --no-build --message "${{ github.sha }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+  # CD for the API: triggers a redeploy on the API host (e.g. Render's
+  # "Deploy Hook" URL). Skipped until the API_DEPLOY_HOOK secret is set.
+  deploy-api:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger API deploy
+        env:
+          API_DEPLOY_HOOK: ${{ secrets.API_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$API_DEPLOY_HOOK" ]; then echo "API_DEPLOY_HOOK not set - skipping"; exit 0; fi
+          curl -fsS -X POST "$API_DEPLOY_HOOK"

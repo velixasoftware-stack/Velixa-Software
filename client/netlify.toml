@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# React Router client-side routes need every path to fall through to
+# index.html so the SPA's own router can handle it.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

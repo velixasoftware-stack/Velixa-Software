@@ -1,0 +1,10 @@
+node_modules/
+client/dist/
+server/.env
+server/uploads/
+.netlify
+*.log
+_tmp_*
+.env.supabase.bak
+database/*.sql
+docs/*.pdf
