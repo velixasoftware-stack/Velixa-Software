@@ -1,6 +1,11 @@
+# The frontend lives in client/; Netlify builds and publishes just that.
 [build]
+  base = "client"
   command = "npm run build"
   publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
 
 # React Router client-side routes need every path to fall through to
 # index.html so the SPA's own router can handle it.
