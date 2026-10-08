@@ -21,5 +21,6 @@ router.use('/notification-templates', require('./notificationTemplate.routes'));
 router.use('/role-screen-defaults', require('./roleScreenDefault.routes'));
 router.use('/role-screens', require('./roleScreen.routes'));
 router.use('/payor-invoices', require('./payorInvoice.routes'));
+router.use('/announcements', require('./announcement.routes'));
 
 module.exports = router;

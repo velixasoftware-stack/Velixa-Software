@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PaymentPendingModal from './PaymentPendingModal';
+import Announcements from './Announcements';
 import { Icon } from './Icons';
 import api from '../api/client';
 
@@ -131,6 +132,7 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/integrations"><Icon name="plug" size={17} /><span>Integrations</span></NavLink>
               <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
               <NavLink to="/chief-admin/role-screen-defaults"><Icon name="branding" size={17} /><span>Role Screen Defaults</span></NavLink>
+              <NavLink to="/chief-admin/announcements"><Icon name="sparkle" size={17} /><span>Login Captions</span></NavLink>
             </div>
           )}
           {!isAdmin && isMarketing && <div className="nav-group-label">Administration</div>}
@@ -222,6 +224,7 @@ export function AppLayout() {
             <button className="secondary" onClick={logout}><Icon name="logout" size={15} /> Logout</button>
           </div>
         </div>
+        <Announcements />
         {/* Don't render any screen behind the payment-pending modal - it must block access, not just cover it. */}
         {!paymentRequired && <Outlet context={{ roleScreens }} />}
       </main>

@@ -588,6 +588,20 @@ const Ticket = sequelize.define('Ticket', {
   ...AUDIT_FIELDS,
 }, { tableName: 'ticket' });
 
+// ---- ANNOUNCEMENT (login caption) -----------------------------------------
+// A caption Chief Admin publishes to every client: shown on the client login
+// page and as a banner inside the app while active and today falls within
+// fromDate..toDate (inclusive, India date). Either date may be left open.
+const Announcement = sequelize.define('Announcement', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  message: { type: DataTypes.TEXT, allowNull: false },
+  tone: { type: DataTypes.STRING, allowNull: false, defaultValue: 'info' }, // info | warning | success
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  fromDate: { type: DataTypes.DATEONLY },
+  toDate: { type: DataTypes.DATEONLY },
+  ...AUDIT_FIELDS,
+}, { tableName: 'announcement' });
+
 // ===== ASSOCIATIONS =========================================================
 Client.hasMany(ClientSubscription, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 ClientSubscription.belongsTo(Client, { foreignKey: 'clientId' });
@@ -807,4 +821,5 @@ module.exports = {
   Result,
   Report,
   Ticket,
+  Announcement,
 };

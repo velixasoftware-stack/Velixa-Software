@@ -26,6 +26,7 @@ import EditOrder from './pages/FrontOffice/EditOrder';
 import BillPrint from './pages/FrontOffice/BillPrint';
 import Laboratory from './pages/Lab/Laboratory';
 import PendingTests from './pages/Lab/PendingTests';
+import Announcements from './pages/ChiefAdmin/Announcements';
 import LabReport from './pages/Lab/LabReport';
 import Reports from './pages/Manager/Reports';
 import ReportBranding from './pages/Manager/ReportBranding';
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><SalesDashboard /></ProtectedRoute>} />
         <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['MARKETING']}><TeamPasswordReset /></ProtectedRoute>} />
         <Route path="role-screen-defaults" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><RoleScreenDefaults /></ProtectedRoute>} />
+        <Route path="announcements" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Announcements /></ProtectedRoute>} />
         <Route path="reset-password" element={<ProtectedRoute type="CHIEF_ADMIN"><ResetPassword /></ProtectedRoute>} />
       </Route>
 
