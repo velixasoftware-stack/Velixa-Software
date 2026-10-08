@@ -12,6 +12,7 @@ export const SCREEN_CATALOG = [
   { key: 'billing', to: '/app/billing', label: 'Patient & Billing', icon: 'billing', group: 'Front Office' },
   { key: 'orders', to: '/app/orders', label: 'Orders', icon: 'orders', group: 'Front Office' },
   { key: 'lab', to: '/app/lab', label: 'Laboratory', icon: 'lab', group: 'Laboratory' },
+  { key: 'pending-tests', to: '/app/pending-tests', label: 'Pending Lab Tests', icon: 'clock', group: 'Laboratory' },
   { key: 'reports', to: '/app/reports', label: 'Reports', icon: 'reports', group: 'Manager' },
   { key: 'report-branding', to: '/app/report-branding', label: 'Report Branding', icon: 'branding', group: 'Manager' },
   { key: 'payor-invoices', to: '/app/payor-invoices', label: 'Payor Invoices', icon: 'invoice', group: 'Manager' },
@@ -93,9 +94,9 @@ function SidebarBrand({ title, subtitle }) {
 // that fetch fails - mirrors the screens each role could already reach
 // before access became configurable, so nothing regresses.
 export const DEFAULT_ROLE_SCREENS = {
-  FRONT_OFFICE: ['billing', 'orders'],
-  LAB_USER: ['lab'],
-  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders'],
+  FRONT_OFFICE: ['billing', 'orders', 'pending-tests'],
+  LAB_USER: ['lab', 'pending-tests'],
+  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders', 'pending-tests'],
   MASTER_MANAGER: ['masters', 'payors'],
 };
 

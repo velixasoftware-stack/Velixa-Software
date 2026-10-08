@@ -122,6 +122,12 @@ async function collectSample(req, res) {
   return res.json(sample);
 }
 
+// Parameters are optional at result entry - one left blank has no value to
+// print, compare or share, so it is skipped everywhere a result is read back.
+function hasValue(r) {
+  return r.value != null && r.value.toString().trim() !== '';
+}
+
 function isOutOfRange(value, low, high) {
   const v = Number(value);
   if (Number.isNaN(v) || low == null || high == null) return false;
@@ -131,14 +137,16 @@ function isOutOfRange(value, low, high) {
   return v < l || v > h;
 }
 
-// POST /api/lab/samples/:id/results  { results: [{ parameterId, value }] }
+// POST /api/lab/samples/:id/results  { results: [{ parameterId, value }], remarks?, remarksBig? }
 // Allowed up to and including VERIFIED - editing an already-verified result
 // moves the sample back to RESULT_ENTERED, since a value change invalidates
 // the earlier verification and it must be re-verified before release.
+// remarks (optional free text, printed on the report under "Remarks") is saved
+// alongside; omitting it leaves any existing remarks untouched.
 async function enterResults(req, res) {
   const { clientId } = req.user;
-  const { results } = req.body;
-  if (!Array.isArray(results) || results.length === 0) {
+  const { results = [], remarks, remarksBig } = req.body;
+  if (!Array.isArray(results) || (results.length === 0 && remarks === undefined)) {
     return res.status(400).json({ message: 'results array is required' });
   }
 
@@ -166,7 +174,12 @@ async function enterResults(req, res) {
     if (record.value !== r.value) await record.update({ value: r.value, isAbnormal });
   }
 
-  await sample.update({ status: 'RESULT_ENTERED' });
+  const update = { status: 'RESULT_ENTERED' };
+  if (remarks !== undefined) {
+    update.remarks = remarks?.toString().trim() || null;
+    update.remarksBig = !!remarksBig;
+  }
+  await sample.update(update);
   if (sample.Report.status !== 'PENDING') {
     await sample.Report.update({ status: 'PENDING', verifiedAt: null });
   }
@@ -298,7 +311,9 @@ async function getBillReport(req, res) {
       barcode: s.barcode,
       collectedAt: s.collectedAt,
       releasedAt: s.Report.releasedAt,
-      parameters: s.Results.map((r) => {
+      remarks: s.remarks || null,
+      remarksBig: s.remarksBig,
+      parameters: s.Results.filter(hasValue).map((r) => {
         const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
         return {
           parameterCode: r.ParameterMaster.parameterCode,
@@ -346,7 +361,7 @@ async function shareReport(req, res) {
 
   const lines = samples.map((s) => {
     const testLine = `${s.BillItem.TestMaster.testName}:`;
-    const paramLines = s.Results.map((r) => {
+    const paramLines = s.Results.filter(hasValue).map((r) => {
       if (r.ParameterMaster.isInterpretation) {
         return `  ${r.ParameterMaster.parameterName}: ${r.value}`;
       }
@@ -354,7 +369,8 @@ async function shareReport(req, res) {
       const flag = r.isAbnormal ? ' (abnormal)' : '';
       return `  ${r.ParameterMaster.parameterName}: ${r.value} ${r.ParameterMaster.unit || ''} (Normal: ${range.normalRangeLow}-${range.normalRangeHigh})${flag}`;
     }).join('\n');
-    return `${testLine}\n${paramLines}`;
+    const remarksLine = s.remarks ? `\n  Remarks: ${s.remarks.replace(/\t/g, ' | ')}` : '';
+    return `${testLine}\n${paramLines}${remarksLine}`;
   }).join('\n\n');
 
   if (channel === 'whatsapp') {
@@ -395,9 +411,141 @@ async function getPatientParameterHistory(clientId, patientId, parameterId) {
   });
 
   return results
+    .filter(hasValue)
     .map((r) => ({ date: r.Sample.Report.releasedAt, value: r.value, isAbnormal: r.isAbnormal }))
     .filter((r) => r.date)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+const PENDING_STATUS_LABEL = {
+  PENDING_COLLECTION: 'Pending collection',
+  COLLECTED: 'Collected',
+  RESULT_ENTERED: 'Result entered',
+  VERIFIED: 'Verified',
+};
+
+// GET /api/report-view/pending-tests?from=YYYY-MM-DD&to=YYYY-MM-DD[&format=xlsx]
+// Every test still in progress - from registration (billing) up to, but not
+// including, report release - for the client's pending worklist. Filtered by
+// the bill's walk-in date; cancelled tests are left out. format=xlsx returns
+// the same rows as an Excel download instead of JSON.
+async function getPendingTests(req, res) {
+  const { clientId } = req.user;
+  const { from, to, format, status, q } = req.query;
+  const billWhere = {};
+  if (from || to) {
+    billWhere.walkInDate = {};
+    if (from) billWhere.walkInDate[Op.gte] = from;
+    if (to) billWhere.walkInDate[Op.lte] = to;
+  }
+
+  const samples = await Sample.findAll({
+    where: {
+      clientId,
+      status: { [Op.in]: PENDING_STATUS_LABEL[status] ? [status] : Object.keys(PENDING_STATUS_LABEL) },
+    },
+    include: [{
+      model: BillItem,
+      required: true,
+      where: { status: 'ACTIVE' },
+      include: [
+        TestMaster,
+        { model: Bill, required: true, where: billWhere, include: [Patient] },
+      ],
+    }],
+    order: [['id', 'DESC']],
+  });
+
+  // Optional free-text search (same fields the screen searches), so an export
+  // contains exactly the rows on screen.
+  const needle = (q || '').toString().trim().toLowerCase();
+  const rows = samples.map((s) => {
+    const bill = s.BillItem.Bill;
+    return {
+      sampleId: s.id,
+      patientName: bill.Patient?.name || '',
+      age: bill.Patient?.age ?? null,
+      ageUnit: bill.Patient?.ageUnit || 'Years',
+      gender: bill.Patient?.gender || '',
+      mobile: bill.Patient?.mobile || '',
+      barcode: s.barcode,
+      billNo: bill.billNo,
+      umr: bill.Patient?.umr || '',
+      testName: s.BillItem.TestMaster?.testName || '',
+      status: s.status,
+      statusLabel: PENDING_STATUS_LABEL[s.status],
+      priority: bill.priority || 'ROUTINE',
+      walkInDate: bill.walkInDate,
+      registeredAt: bill.createdAt,
+      updatedAt: s.updatedAt,
+    };
+  }).filter((r) => !needle || [r.patientName, r.barcode, r.billNo, r.umr, r.testName, r.mobile]
+    .some((f) => (f || '').toString().toLowerCase().includes(needle)));
+
+  if (format === 'xlsx') {
+    const XLSX = require('xlsx');
+    const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({
+      'Patient Name': r.patientName,
+      Barcode: r.barcode,
+      'Bill No': r.billNo,
+      'UMR No': r.umr,
+      'Test Name': r.testName,
+      'Test Status': r.statusLabel,
+      'Walk-in Date': r.walkInDate,
+      Priority: r.priority,
+      Mobile: r.mobile,
+    })));
+    sheet['!cols'] = [{ wch: 24 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 13 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Pending Tests');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="pending-tests_${from || 'all'}_to_${to || 'all'}.xlsx"`);
+    return res.send(buffer);
+  }
+  return res.json(rows);
+}
+
+// GET /api/lab/bills/:billId/previous-results
+// For delta checks during result entry: this patient's most recent RELEASED
+// value of each parameter on this bill, taken from any *earlier* bill (never
+// this one). Shape: { [parameterId]: { value, date, isAbnormal, billNo } }.
+async function getPreviousResults(req, res) {
+  const { clientId } = req.user;
+  const bill = await Bill.findOne({ where: { id: req.params.billId, clientId } });
+  if (!bill) return res.status(404).json({ message: 'Bill not found' });
+
+  const items = await BillItem.findAll({
+    where: { billId: bill.id },
+    include: [{ model: TestMaster, include: [ParameterMaster] }],
+  });
+  const parameterIds = [...new Set(items.flatMap((i) => (i.TestMaster?.ParameterMasters || [])
+    .filter((p) => !p.isInterpretation).map((p) => p.id)))];
+  if (parameterIds.length === 0) return res.json({});
+
+  const results = await Result.findAll({
+    where: { parameterId: parameterIds },
+    include: [{
+      model: Sample,
+      required: true,
+      where: { clientId, status: 'RELEASED' },
+      include: [
+        { model: BillItem, required: true, include: [{ model: Bill, required: true, where: { patientId: bill.patientId, id: { [Op.ne]: bill.id } } }] },
+        { model: Report, required: true },
+      ],
+    }],
+  });
+
+  const latest = {};
+  for (const r of results) {
+    const date = r.Sample.Report.releasedAt;
+    if (!date || !hasValue(r)) continue;
+    const prev = latest[r.parameterId];
+    if (!prev || new Date(date) > new Date(prev.date)) {
+      latest[r.parameterId] = { value: r.value, date, isAbnormal: r.isAbnormal, billNo: r.Sample.BillItem.Bill.billNo };
+    }
+  }
+  return res.json(latest);
 }
 
 // GET /api/lab/bills/:billId/trend  ("AI Report" - each parameter on this bill
@@ -426,6 +574,7 @@ async function getBillTrendReport(req, res) {
     for (const result of sample.Results) {
       const param = result.ParameterMaster;
       if (param.isInterpretation) continue; // a trend/sparkline over free text is meaningless
+      if (!hasValue(result)) continue; // left blank at entry - nothing to trend
       const history = await getPatientParameterHistory(clientId, bill.patientId, param.id);
       const range = resolveNormalRange(param, bill.Patient?.age, bill.Patient?.gender, bill.Patient?.ageUnit);
       parameters.push({
@@ -449,4 +598,5 @@ async function getBillTrendReport(req, res) {
 
 module.exports = {
   listSamples, getSample, collectSample, enterResults, verifySample, releaseSample, revokeReport, getBillReport, getBillTrendReport, shareReport,
+  getPreviousResults, getPendingTests,
 };

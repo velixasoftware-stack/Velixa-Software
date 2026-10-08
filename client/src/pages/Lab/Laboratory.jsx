@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { Icon } from '../../components/Icons';
 import ReviewResults from './ReviewResults';
+import { StatusLegend, StatusPill, TestStatusSummary, TestStatusList } from '../../components/TestStatus';
 
 function daysAgoISO(days) {
   const d = new Date();
@@ -15,17 +16,8 @@ function todayISO() {
 
 const RESULT_ENTRY_STATUSES = ['COLLECTED', 'RESULT_ENTERED', 'VERIFIED'];
 
-const STATUS_META = {
-  PENDING_COLLECTION: { label: 'Pending', dot: '#f59e0b' },
-  COLLECTED: { label: 'Collected', dot: '#2563eb' },
-  RESULT_ENTERED: { label: 'Result Entered', dot: '#7c3aed' },
-  VERIFIED: { label: 'Verified', dot: '#0891b2' },
-  RELEASED: { label: 'Released', dot: '#16a34a' },
-  CANCELLED: { label: 'Cancelled', dot: '#dc2626' },
-};
-
 const CARD_ACTION_LABEL = {
-  collect: 'Collect Sample',
+  collect: 'Collect',
   review: 'Enter Results',
   release: 'Release Report',
   report: 'View Report',
@@ -107,9 +99,11 @@ export default function Laboratory() {
   const [fromDate, setFromDate] = useState(() => daysAgoISO(3));
   const [toDate, setToDate] = useState(() => todayISO());
   const [viewMode, setViewMode] = useState('cards'); // cards | list
+  const [expandedCards, setExpandedCards] = useState(() => new Set()); // billIds whose per-test status list is open
   const [reviewGroup, setReviewGroup] = useState(null); // bill group open in the full-screen Review Results panel
   const [reviewFocusId, setReviewFocusId] = useState(null); // which test within it starts focused
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState(''); // e.g. which tests a Review Results save couldn't verify
   const [busy, setBusy] = useState(false);
   const [confirmRelease, setConfirmRelease] = useState(null); // samples[] pending a release confirmation, or null
   const [revokeFor, setRevokeFor] = useState(null); // sample being revoked, or null
@@ -154,6 +148,30 @@ export default function Laboratory() {
   }, [samples, statusFilter, search, fromDate, toDate]);
 
   const visibleGroups = useMemo(() => groupByBill(visibleSamples), [visibleSamples]);
+
+  // Per-tab sample counts under the current search and date range (ignoring
+  // the tab itself), shown as a number on each status tab.
+  const tabCounts = useMemo(() => {
+    const q = search.trim();
+    const inRange = samples.filter((s) => {
+      const isOutstanding = !['RELEASED', 'CANCELLED'].includes(s.status);
+      const walkInDate = s.BillItem?.Bill?.walkInDate;
+      return matchesSearch(s, q)
+        && (isOutstanding || !fromDate || !walkInDate || walkInDate >= fromDate)
+        && (isOutstanding || !toDate || !walkInDate || walkInDate <= toDate);
+    });
+    return Object.fromEntries(STATUS_TABS.map((t) => [
+      t.key, t.statuses ? inRange.filter((s) => t.statuses.includes(s.status)).length : inRange.length,
+    ]));
+  }, [samples, search, fromDate, toDate]);
+
+  function toggleCard(billId) {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(billId)) next.delete(billId); else next.add(billId);
+      return next;
+    });
+  }
 
   // Looked up when opening Review Results, so it always carries every test on that
   // bill (not just the ones visible under the current tab) - unfiltered, unlike above.
@@ -237,9 +255,9 @@ export default function Laboratory() {
 
   return (
     <div>
-      <div className="topbar">
+      <div className="topbar compact-header">
         <h3 className="section-heading" style={{ margin: 0 }}>
-          <span className="icon-badge"><Icon name="lab" size={17} /></span> Patients
+          <span className="icon-badge"><Icon name="lab" size={15} /></span> Patients
         </h3>
         <div className="status-summary">
           <div className="stat-chip"><span className="stat-value">{counts.total}</span><span className="stat-label">Total</span></div>
@@ -247,11 +265,11 @@ export default function Laboratory() {
           <div className="stat-chip done"><span className="stat-value">{counts.done}</span><span className="stat-label">Done</span></div>
           <div className="stat-chip cancelled"><span className="stat-value">{counts.cancelled}</span><span className="stat-label">Cancel</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="compact-filters">
           <div className="df-field"><span>From</span><input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></div>
           <div className="df-field"><span>To</span><input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></div>
           {(fromDate || toDate) && (
-            <button type="button" className="secondary" style={{ padding: '5px 12px', fontSize: 12.5, height: 32 }} onClick={() => { setFromDate(''); setToDate(''); }}>
+            <button type="button" className="secondary" onClick={() => { setFromDate(''); setToDate(''); }}>
               Clear
             </button>
           )}
@@ -259,16 +277,15 @@ export default function Laboratory() {
             placeholder="Search patient, UMR or sample…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 240 }}
           />
-          <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ width: 110 }}>
+          <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
             <option value="cards">Cards</option>
             <option value="list">List</option>
           </select>
         </div>
       </div>
 
-      <div className="status-tabs" style={{ marginBottom: 10 }}>
+      <div className="status-tabs compact" style={{ marginBottom: 8 }}>
         {STATUS_TABS.map((t) => (
           <button
             key={t.key}
@@ -276,73 +293,79 @@ export default function Laboratory() {
             className={`status-tab ${statusFilter === t.key ? 'active' : ''}`}
             onClick={() => setStatusFilter(t.key)}
           >
-            {t.label}
+            {t.label}<span className="tab-count">{tabCounts[t.key] ?? 0}</span>
           </button>
         ))}
       </div>
+      <StatusLegend />
       {error && <p className="error-text">{error}</p>}
+      {notice && (
+        <div className="lab-notice" role="status">
+          <span>⚠ {notice}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setNotice('')}>×</button>
+        </div>
+      )}
 
       {viewMode === 'list' && (
-        <div>
-          {visibleSamples.map((s) => {
-            const bill = s.BillItem?.Bill;
-            const meta = STATUS_META[s.status] || { label: s.status, dot: '#94a3b8' };
-            const group = bill ? billGroupsById.get(bill.id) : null;
-            return (
-              <div className="lab-row" key={s.id}>
-                <span className="lab-row-id">{labTag(s.id)}</span>
-                <div className="lab-row-patient">
-                  <strong>{bill?.Patient?.name}</strong>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{bill?.Patient?.umr}</span>
-                </div>
-                <span className="lab-row-status">
-                  <span className="dot" style={{ background: meta.dot }} />
-                  {meta.label}
-                </span>
-                <span className="lab-row-test">{s.BillItem?.TestMaster?.testName}</span>
-
-                <div className="lab-row-meta">
-                  {s.updatedBy && (
-                    <span className="meta-item"><Icon name="user" size={13} /> {s.updatedBy}</span>
-                  )}
-                  <span className="meta-item"><Icon name="clock" size={13} /> {formatDateTime(s.updatedAt)}</span>
-                </div>
-
-                <div className="lab-row-actions">
-                  {s.status === 'PENDING_COLLECTION' && <button onClick={() => runAction(() => doAction(s, 'collect'))} disabled={busy}>Collect</button>}
-                  {RESULT_ENTRY_STATUSES.includes(s.status) && (
-                    <button onClick={() => openReview(group, s.id)} disabled={busy}>
-                      {s.status === 'RESULT_ENTERED' ? 'Verify' : 'Results'}
-                    </button>
-                  )}
-                  {s.status === 'VERIFIED' && (
-                    <button onClick={() => setConfirmRelease([s])} disabled={busy}>
-                      {s.Report?.status === 'REVOKED' ? 'Release Again' : 'Release'}
-                    </button>
-                  )}
-                  {s.status === 'RELEASED' && bill && (
-                    <>
-                      <button className="secondary" onClick={() => navigate(`/app/report/${bill.id}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Icon name="print" size={14} /> Report
-                      </button>
-                      <button className="secondary danger" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openRevoke(s)} disabled={busy}>Revoke</button>
-                    </>
-                  )}
-                </div>
-                {s.status === 'VERIFIED' && s.Report?.status === 'REVOKED' && (
-                  <p style={{ gridColumn: '1 / -1', fontSize: 12, color: '#b91c1c', margin: '4px 0 0' }}>
-                    Previously revoked: {s.Report.revokedReason}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          {visibleSamples.length === 0 && <p>No samples.</p>}
+        <div className="card orders-card">
+          <table className="orders-table lab-list-table">
+            <thead>
+              <tr><th>Sample</th><th>Patient</th><th>Test</th><th>Status</th><th>Last updated</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {visibleSamples.map((s) => {
+                const bill = s.BillItem?.Bill;
+                const group = bill ? billGroupsById.get(bill.id) : null;
+                return (
+                  <tr key={s.id}>
+                    <td><span className="lab-row-id">{labTag(s.id)}</span></td>
+                    <td>
+                      <div className="cell-main">{bill?.Patient?.name}</div>
+                      <div className="cell-sub">{bill?.Patient?.umr}</div>
+                    </td>
+                    <td>{s.BillItem?.TestMaster?.testName}</td>
+                    <td>
+                      <StatusPill status={s.status} />
+                      {s.status === 'VERIFIED' && s.Report?.status === 'REVOKED' && (
+                        <div className="revoked-note" title={s.Report.revokedReason}>Previously revoked</div>
+                      )}
+                    </td>
+                    <td>
+                      <div className="cell-sub">{formatDateTime(s.updatedAt)}</div>
+                      {s.updatedBy && <div className="cell-sub">by {s.updatedBy}</div>}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        {s.status === 'PENDING_COLLECTION' && <button onClick={() => runAction(() => doAction(s, 'collect'))} disabled={busy}>Collect</button>}
+                        {RESULT_ENTRY_STATUSES.includes(s.status) && (
+                          <button onClick={() => openReview(group, s.id)} disabled={busy}>
+                            {s.status === 'RESULT_ENTERED' ? 'Verify' : s.status === 'VERIFIED' ? 'Edit' : 'Results'}
+                          </button>
+                        )}
+                        {s.status === 'VERIFIED' && (
+                          <button onClick={() => setConfirmRelease([s])} disabled={busy}>
+                            {s.Report?.status === 'REVOKED' ? 'Release Again' : 'Release'}
+                          </button>
+                        )}
+                        {s.status === 'RELEASED' && bill && (
+                          <>
+                            <button className="secondary" onClick={() => navigate(`/app/report/${bill.id}`)}>Report</button>
+                            <button className="danger" onClick={() => openRevoke(s)} disabled={busy}>Revoke</button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {visibleSamples.length === 0 && <tr><td colSpan={6}>No samples.</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 
       {viewMode === 'cards' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        <div className="lab-cards">
           {visibleGroups.map((g) => {
             const lastUpdated = g.samples.reduce((max, s) => (
               !max || new Date(s.updatedAt) > new Date(max.updatedAt) ? s : max
@@ -355,52 +378,60 @@ export default function Laboratory() {
             // one. Both need their own entry point here regardless of actionKind.
             const hasVerified = g.samples.some((s) => s.status === 'VERIFIED');
             const releasedSample = g.samples.find((s) => s.status === 'RELEASED');
+            // Verified tests (including a revoked report rolled back to VERIFIED)
+            // must stay releasable even while other tests on the same order are
+            // still being collected/entered - otherwise the CTA, which follows
+            // the earliest pending stage, leaves no way to release them.
+            const verifiedSamples = g.samples.filter((s) => s.status === 'VERIFIED');
+            const tests = g.samples.map((s) => ({ testName: s.BillItem?.TestMaster?.testName, status: s.status }));
+            const expanded = expandedCards.has(g.billId);
             return (
-              <div className="lab-card2" key={g.billId}>
-                <div className="lab-card2-head">
-                  <div>
-                    <strong>{g.patient?.name}</strong>
-                    <div className="lab-card2-sub">
-                      {g.patient?.umr} · <span style={{ color: '#dc2626' }}>{g.patient?.gender}</span>
-                      {g.patient?.age != null && g.patient?.age !== '' && ` · ${formatAge(g.patient.age, g.patient.ageUnit)}`}
-                    </div>
+              <div className="lab-card3" key={g.billId}>
+                <div className="lab-card3-head">
+                  <div className="lab-card3-name">{g.patient?.name}</div>
+                  <span className="lab-row-id">{labTag(g.samples[0].id)}</span>
+                </div>
+                <div className="lab-card3-head">
+                  <div className="lab-card3-sub">
+                    {g.patient?.umr} · <span className="gender">{g.patient?.gender}</span>
+                    {g.patient?.age != null && g.patient?.age !== '' && ` · ${formatAge(g.patient.age, g.patient.ageUnit)}`}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                    <span className="lab-row-id">{labTag(g.samples[0].id)}</span>
-                    <span className="badge-outline">{g.bill?.priority || 'ROUTINE'}</span>
+                  <div className="lab-card3-tags">
+                    {g.bill?.visitType && <span className="badge-outline visit-type">{g.bill.visitType}</span>}
+                    {/* ROUTINE is the default - only flag the exceptions (e.g. URGENT) */}
+                    {g.bill?.priority && g.bill.priority !== 'ROUTINE' && <span className="badge-outline urgent">{g.bill.priority}</span>}
                   </div>
                 </div>
-                {g.bill?.visitType && <span className="badge-outline visit-type">{g.bill.visitType}</span>}
 
-                <div className="lab-card2-tests">
-                  {g.samples.map((s) => <span className="lab-row-test" key={s.id}>{s.BillItem?.TestMaster?.testName}</span>)}
+                <TestStatusSummary tests={tests} chipsShown={2} expanded={expanded} onToggle={() => toggleCard(g.billId)} />
+                {expanded && <TestStatusList tests={tests} />}
+
+                <div className="lab-card3-foot">
+                  <span className="meta-item" title={lastUpdated?.updatedBy ? `Last updated by ${lastUpdated.updatedBy}` : ''}>
+                    <Icon name="clock" size={11} /> {formatDateTime(lastUpdated?.updatedAt)}
+                    {lastUpdated?.updatedBy ? ` · ${lastUpdated.updatedBy}` : ''}
+                  </span>
                 </div>
-
-                <div className="lab-card2-footer">
-                  {lastUpdated?.updatedBy && (
-                    <span className="meta-item"><Icon name="user" size={13} /> {lastUpdated.updatedBy}</span>
-                  )}
-                  <span className="meta-item"><Icon name="clock" size={13} /> {formatDateTime(lastUpdated?.updatedAt)}</span>
-                </div>
-
-                <div className="lab-card2-actions">
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="View bill report"
-                    onClick={() => navigate(`/app/report/${g.billId}`)}
-                  >
-                    <Icon name="orders" size={15} />
+                <div className="lab-card3-actions">
+                  <button type="button" className="icon-btn" title="View bill report" onClick={() => navigate(`/app/report/${g.billId}`)}>
+                    <Icon name="orders" size={13} />
                   </button>
                   {hasVerified && actionKind !== 'review' && (
-                    <button type="button" className="secondary" disabled={busy} onClick={() => openReview(g)}>
-                      Edit Results
+                    <button type="button" className="secondary" disabled={busy} onClick={() => openReview(g)}>Edit</button>
+                  )}
+                  {verifiedSamples.length > 0 && actionKind !== 'release' && (
+                    <button
+                      type="button"
+                      className="release-btn"
+                      disabled={busy}
+                      title={`Release ${verifiedSamples.length} verified test${verifiedSamples.length === 1 ? '' : 's'}`}
+                      onClick={() => setConfirmRelease(verifiedSamples)}
+                    >
+                      Release{verifiedSamples.length > 1 ? ` (${verifiedSamples.length})` : ''}
                     </button>
                   )}
                   {releasedSample && (
-                    <button type="button" className="secondary danger" style={{ padding: '4px 10px', fontSize: 12 }} disabled={busy} onClick={() => openRevoke(releasedSample)}>
-                      Revoke
-                    </button>
+                    <button type="button" className="secondary danger" disabled={busy} onClick={() => openRevoke(releasedSample)}>Revoke</button>
                   )}
                   <button type="button" className="cta-btn" disabled={busy} onClick={() => runCardAction(g)}>
                     {CARD_ACTION_LABEL[actionKind]}
@@ -460,7 +491,7 @@ export default function Laboratory() {
           group={reviewGroup}
           focusSampleId={reviewFocusId}
           onClose={() => setReviewGroup(null)}
-          onSaved={() => { setReviewGroup(null); load(); }}
+          onSaved={(info) => { setReviewGroup(null); setNotice(info?.notice || ''); load(); }}
         />
       )}
     </div>

@@ -14,5 +14,6 @@ router.post('/samples/:id/results', labCtrl.enterResults);
 router.post('/samples/:id/verify', labCtrl.verifySample);
 router.post('/samples/:id/release', labCtrl.releaseSample);
 router.put('/samples/:id/revoke', labCtrl.revokeReport);
+router.get('/bills/:billId/previous-results', labCtrl.getPreviousResults);
 
 module.exports = router;

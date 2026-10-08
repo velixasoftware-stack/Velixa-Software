@@ -3,16 +3,51 @@ import api from '../../api/client';
 import { downloadFile } from '../../utils/download';
 import { Icon } from '../../components/Icons';
 
+/** ₹ with Indian digit grouping, e.g. ₹1,05,000. */
+function inr(n) {
+  return `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+}
+
+// Same stage colours as the Orders / Laboratory screens.
+const STATUS_TONE = {
+  PENDING_COLLECTION: 'amber', COLLECTED: 'sky', RESULT_ENTERED: 'blue', VERIFIED: 'teal', RELEASED: 'green', CANCELLED: 'rose',
+};
+const STATUS_LABEL = {
+  PENDING_COLLECTION: 'Pending collection', COLLECTED: 'Collected', RESULT_ENTERED: 'Result entered',
+  VERIFIED: 'Verified', RELEASED: 'Released', CANCELLED: 'Cancelled',
+};
+
+/** A coloured KPI tile - tinted background, accent bar, icon and coloured value. */
+function Kpi({ tone, icon, label, value, hint }) {
+  return (
+    <div className={`kpi kpi-${tone}`}>
+      {icon && <span className="kpi-icon"><Icon name={icon} size={16} /></span>}
+      <div className="kpi-body">
+        <div className="kpi-value">{value}</div>
+        <div className="kpi-label">{label}</div>
+        {hint && <div className="kpi-hint">{hint}</div>}
+      </div>
+    </div>
+  );
+}
+
 /** A minimal inline bar chart - no charting library needed for a handful of bars. */
 function BarChart({ data, valueKey, labelKey }) {
   if (data.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>No data for this period.</p>;
 
   const w = 640, h = 200, pad = 28, gap = 10;
   const max = Math.max(...data.map((d) => Number(d[valueKey])), 1);
-  const barW = Math.max(8, (w - pad * 2 - gap * (data.length - 1)) / data.length);
+  // Capped so a short range (e.g. 2 days) doesn't draw two half-chart-wide slabs.
+  const barW = Math.min(56, Math.max(8, (w - pad * 2 - gap * (data.length - 1)) / data.length));
 
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMinYMid meet">
+      <defs>
+        <linearGradient id="barFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#2563eb" />
+        </linearGradient>
+      </defs>
       <line x1={pad} y1={h - pad} x2={w - 4} y2={h - pad} stroke="#e2e8f0" strokeWidth="1" />
       {data.map((d, i) => {
         const value = Number(d[valueKey]);
@@ -21,7 +56,7 @@ function BarChart({ data, valueKey, labelKey }) {
         const y = h - pad - barH;
         return (
           <g key={i}>
-            <rect x={x} y={y} width={barW} height={barH} rx="3" fill="#2563eb" />
+            <rect x={x} y={y} width={barW} height={barH} rx="4" fill="url(#barFill)" />
             <text x={x + barW / 2} y={h - pad + 14} fontSize="9" fill="#64748b" textAnchor="middle">
               {String(d[labelKey]).slice(5)}
             </text>
@@ -76,34 +111,53 @@ export default function Reports() {
     return `/reports/export?${params.toString()}`;
   }
 
+  const outstandingAmt = Number(collection?.outstanding || 0);
+  const collectedPct = Number(collection?.totalBilled) > 0
+    ? Math.round((Number(collection.totalCollected || 0) / Number(collection.totalBilled)) * 100)
+    : null;
+
   return (
     <div>
-      <div className="card date-filter-bar no-print">
-        <div className="df-title"><Icon name="calendar" size={15} /> Filter by Date</div>
-        <div className="df-controls">
+      <div className="dash-bar no-print">
+        <div className="dash-bar-title">
+          <span className="dash-bar-icon"><Icon name="reports" size={16} /></span>
+          <div>
+            <strong>Reports Dashboard</strong>
+            <span>{fromDate || toDate ? `${fromDate || '…'} → ${toDate || 'today'}` : 'All dates'}</span>
+          </div>
+        </div>
+        <div className="dash-bar-controls">
           <div className="df-field"><span>From</span>
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div className="df-field"><span>To</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            <input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
           </div>
           {(fromDate || toDate) && (
-            <button type="button" className="secondary" onClick={() => { setFromDate(''); setToDate(''); }}>Clear</button>
+            <button type="button" className="dash-btn ghost" onClick={() => { setFromDate(''); setToDate(''); }}>Clear</button>
           )}
-          <button type="button" className="secondary" onClick={() => downloadFile(exportUrl(), 'reports-export.xlsx')}>
-            Export to Excel
+          <button type="button" className="dash-btn excel" onClick={() => downloadFile(exportUrl(), 'reports-export.xlsx')}>
+            ⬇ Export Excel
           </button>
-          <button type="button" onClick={() => window.print()}>Print / Save as PDF</button>
+          <button type="button" className="dash-btn pdf" onClick={() => window.print()}>
+            <Icon name="print" size={13} /> Print / PDF
+          </button>
         </div>
       </div>
 
-      <div className="stat-row">
-        <div className="stat-tile"><div className="value">{collection?.billCount ?? '—'}</div><div className="label">Bills</div></div>
-        <div className="stat-tile"><div className="value">₹{collection?.totalBilled ?? 0}</div><div className="label">Total Billed</div></div>
-        <div className="stat-tile"><div className="value">₹{collection?.totalCollected ?? 0}</div><div className="label">Total Collected</div></div>
-        <div className="stat-tile"><div className="value">₹{collection?.totalRefunded ?? 0}</div><div className="label">Cancelled / Refunded</div></div>
-        <div className="stat-tile"><div className="value">₹{collection?.totalPostDiscount ?? 0}</div><div className="label">Post-Billing Discount</div></div>
-        <div className="stat-tile"><div className="value">₹{collection?.outstanding ?? 0}</div><div className="label">Outstanding</div></div>
+      <div className="kpi-row">
+        <Kpi tone="indigo" icon="orders" label="Bills" value={collection?.billCount ?? '—'} />
+        <Kpi tone="blue" icon="billing" label="Total Billed" value={inr(collection?.totalBilled)} />
+        <Kpi
+          tone="green" icon="invoice" label="Total Collected" value={inr(collection?.totalCollected)}
+          hint={collectedPct != null ? `${collectedPct}% of billed` : null}
+        />
+        <Kpi tone="rose" icon="refund" label="Cancelled / Refunded" value={inr(collection?.totalRefunded)} />
+        <Kpi tone="amber" icon="percent" label="Post-Billing Discount" value={inr(collection?.totalPostDiscount)} />
+        <Kpi
+          tone={outstandingAmt > 0 ? 'orange' : 'teal'} icon="clock" label="Outstanding" value={inr(collection?.outstanding)}
+          hint={outstandingAmt > 0 ? 'To be collected' : 'All settled'}
+        />
       </div>
 
       <div className="card">
@@ -118,7 +172,7 @@ export default function Reports() {
         <table style={{ marginTop: 12 }}>
           <thead><tr><th>Period</th><th>Bill Count</th><th>Total Amount</th></tr></thead>
           <tbody>
-            {transactions.map((t) => <tr key={t.period}><td>{t.period}</td><td>{t.billCount}</td><td>₹{t.totalAmount}</td></tr>)}
+            {transactions.map((t) => <tr key={t.period}><td>{t.period}</td><td>{t.billCount}</td><td>{inr(t.totalAmount)}</td></tr>)}
             {transactions.length === 0 && <tr><td colSpan={3}>No transactions.</td></tr>}
           </tbody>
         </table>
@@ -126,19 +180,19 @@ export default function Reports() {
 
       <div className="card">
         <h3>Lab Summary</h3>
-        <div className="stat-row">
+        <div className="kpi-row compact">
           {labSummary && Object.entries(labSummary.byStatus).map(([status, count]) => (
-            <div className="stat-tile" key={status}><div className="value">{count}</div><div className="label">{status}</div></div>
+            <Kpi key={status} tone={STATUS_TONE[status] || 'slate'} label={STATUS_LABEL[status] || status} value={count} />
           ))}
         </div>
       </div>
 
       <div className="card">
         <h3>Report Status (Pending / Verified / Released)</h3>
-        <div className="stat-row">
-          <div className="stat-tile"><div className="value">{reportStatus?.PENDING ?? 0}</div><div className="label">Pending</div></div>
-          <div className="stat-tile"><div className="value">{reportStatus?.VERIFIED ?? 0}</div><div className="label">Verified</div></div>
-          <div className="stat-tile"><div className="value">{reportStatus?.RELEASED ?? 0}</div><div className="label">Released</div></div>
+        <div className="kpi-row compact">
+          <Kpi tone="amber" label="Pending" value={reportStatus?.PENDING ?? 0} />
+          <Kpi tone="teal" label="Verified" value={reportStatus?.VERIFIED ?? 0} />
+          <Kpi tone="green" label="Released" value={reportStatus?.RELEASED ?? 0} />
         </div>
       </div>
 

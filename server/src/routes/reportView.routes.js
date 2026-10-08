@@ -12,5 +12,7 @@ router.use(authenticate, requireActiveSubscription, requireRole(ROLES.FRONT_OFFI
 router.get('/bills/:billId/report', labCtrl.getBillReport);
 router.get('/bills/:billId/trend', labCtrl.getBillTrendReport);
 router.post('/bills/:billId/report/share', labCtrl.shareReport);
+// Pending Lab Tests worklist (and its Excel export) - same audience as the report.
+router.get('/pending-tests', labCtrl.getPendingTests);
 
 module.exports = router;

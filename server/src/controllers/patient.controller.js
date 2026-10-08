@@ -1,10 +1,18 @@
 const { Op } = require('sequelize');
 const { Patient } = require('../models');
 
-/** Generates the next UMR for a client - e.g. UMR000123. Reused for every future visit of that patient. */
+/**
+ * Generates the next UMR for a client - e.g. UMR000123. Reused for every future visit of that patient.
+ * Based on the highest existing number, not the patient count: once any patient has been deleted,
+ * count + 1 lands on a UMR that's already taken and the insert fails the (clientId, umr) unique index.
+ */
 async function generateUmr(clientId) {
-  const count = await Patient.count({ where: { clientId } });
-  return `UMR${String(count + 1).padStart(6, '0')}`;
+  const umrs = await Patient.findAll({ where: { clientId }, attributes: ['umr'], raw: true });
+  const highest = umrs.reduce((max, { umr }) => {
+    const n = parseInt(String(umr).replace(/^UMR/i, ''), 10);
+    return Number.isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return `UMR${String(highest + 1).padStart(6, '0')}`;
 }
 
 /**

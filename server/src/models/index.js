@@ -533,6 +533,11 @@ const Sample = sequelize.define('Sample', {
     defaultValue: 'PENDING_COLLECTION',
   },
   collectedAt: { type: DataTypes.DATE },
+  // Optional per-test remarks printed on the report under "Remarks".
+  // remarksBig: entered in the large box (multi-line interpretation, may hold
+  // a pasted table) rather than the one-line box - kept so it reopens the same way.
+  remarks: { type: DataTypes.TEXT },
+  remarksBig: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   ...AUDIT_FIELDS,
 }, { tableName: 'sample' });
 

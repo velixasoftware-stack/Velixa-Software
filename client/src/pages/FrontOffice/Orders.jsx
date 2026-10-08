@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icons';
+import { StatusLegend, TestStatusSummary, TestStatusDetail } from '../../components/TestStatus';
 
 const REFUND_MODES = ['Cash', 'Card', 'UPI', 'Insurance'];
 
@@ -26,6 +27,7 @@ export default function Orders() {
   const [settingsMessage, setSettingsMessage] = useState('');
 
   const [bills, setBills] = useState([]);
+  const [expandedBillIds, setExpandedBillIds] = useState(() => new Set());
   const [search, setSearch] = useState('');
   // Defaults to the last 7 days so the list isn't every order ever placed -
   // "Clear dates" (below) drops the filter to show everything.
@@ -79,6 +81,14 @@ export default function Orders() {
     const done = tests.filter((t) => t.status === 'RELEASED' && t.itemStatus !== 'CANCELLED').length;
     return { total, cancelled, done, pending: total - done - cancelled };
   }, [filtered]);
+
+  function toggleExpanded(billId) {
+    setExpandedBillIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(billId)) next.delete(billId); else next.add(billId);
+      return next;
+    });
+  }
 
   async function toggleSetting(key, label) {
     setSettingsSaving(true);
@@ -188,8 +198,8 @@ export default function Orders() {
   }
 
   return (
-    <div className="card">
-      <div className="topbar">
+    <div className="card orders-card">
+      <div className="topbar compact-header">
         <h3 style={{ margin: 0 }}>Orders</h3>
         <div className="status-summary">
           <div className="stat-chip"><span className="stat-value">{testCounts.total}</span><span className="stat-label">Total</span></div>
@@ -197,47 +207,50 @@ export default function Orders() {
           <div className="stat-chip done"><span className="stat-value">{testCounts.done}</span><span className="stat-label">Done</span></div>
           <div className="stat-chip cancelled"><span className="stat-value">{testCounts.cancelled}</span><span className="stat-label">Cancel</span></div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="compact-filters">
           <div className="df-field"><span>From</span><input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></div>
           <div className="df-field"><span>To</span><input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></div>
           {(fromDate || toDate) && (
-            <button type="button" className="secondary" style={{ padding: '5px 12px', fontSize: 12.5, height: 32 }} onClick={() => { setFromDate(''); setToDate(''); }}>
+            <button type="button" className="secondary" onClick={() => { setFromDate(''); setToDate(''); }}>
               Clear
             </button>
           )}
-          <input placeholder="Search by Order ID, UMR, name or mobile…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 260, maxWidth: '100%' }} />
+          <input placeholder="Search by Order ID, UMR, name or mobile…" value={search} onChange={(e) => setSearch(e.target.value)} />
           {canConfigure && <button type="button" onClick={() => setShowSettings(true)}>⚙ Settings</button>}
         </div>
       </div>
-      <table>
+      <StatusLegend />
+      <table className="orders-table">
         <thead>
           <tr>
-            <th>Order ID</th><th>UMR</th><th>Patient</th><th>Ref. Doctor</th><th>Walk-in</th>
-            <th>Net Paid Amount</th><th>Due</th><th>Tests</th><th>Actions</th>
+            <th>Order</th><th>Patient</th><th>Ref. Doctor</th><th>Amount</th><th>Tests</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {filtered.map((b) => {
             const anyReleased = b.tests.some((t) => t.status === 'RELEASED');
+            const expanded = expandedBillIds.has(b.id);
             return (
-              <tr key={b.id}>
-                <td>{b.billNo}</td>
-                <td>{b.patient?.umr}</td>
-                <td>{b.patient?.name}<br /><span style={{ fontSize: 12, color: '#64748b' }}>{b.patient?.mobile}</span></td>
-                <td>{b.referredDoctor ? `Dr. ${b.referredDoctor}` : '—'}</td>
-                <td>{b.walkInDate}</td>
-                <td>₹{b.paidAmount}</td>
-                <td>{Number(b.dueAmount) > 0 ? <span className="badge PENDING">₹{b.dueAmount}</span> : '—'}</td>
+              <Fragment key={b.id}>
+              <tr className={expanded ? 'order-row-expanded' : ''}>
                 <td>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {b.tests.map((t, i) => (
-                      <span key={i} className={`badge ${t.itemStatus === 'CANCELLED' ? 'CANCELLED' : t.status}`} title={t.testName}>
-                        {t.testName}{t.itemStatus === 'CANCELLED' ? ' (cancelled)' : ''}
-                      </span>
-                    ))}
-                  </div>
+                  <div className="cell-main">{b.billNo}</div>
+                  <div className="cell-sub">{b.walkInDate}</div>
                 </td>
-                <td style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+                <td>
+                  <div className="cell-main">{b.patient?.name}</div>
+                  <div className="cell-sub">{b.patient?.umr}{b.patient?.mobile ? ` · ${b.patient.mobile}` : ''}</div>
+                </td>
+                <td>{b.referredDoctor ? `Dr. ${b.referredDoctor}` : '—'}</td>
+                <td>
+                  <div className="cell-main">₹{b.paidAmount}</div>
+                  {Number(b.dueAmount) > 0 && <div className="cell-sub due">Due ₹{b.dueAmount}</div>}
+                </td>
+                <td>
+                  <TestStatusSummary tests={b.tests} expanded={expanded} onToggle={() => toggleExpanded(b.id)} />
+                </td>
+                <td>
+                  <div className="order-actions">
                   <button className="icon-btn" title="Edit" aria-label="Edit" onClick={() => navigate(`/app/orders/${b.id}/edit`)}>
                     <Icon name="edit" size={15} />
                   </button>
@@ -257,11 +270,18 @@ export default function Orders() {
                       <Icon name="percent" size={15} />
                     </button>
                   )}
+                  </div>
                 </td>
               </tr>
+              {expanded && (
+                <tr className="order-tests-row">
+                  <td colSpan={6}><TestStatusDetail tests={b.tests} /></td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
-          {filtered.length === 0 && <tr><td colSpan={8}>No orders found.</td></tr>}
+          {filtered.length === 0 && <tr><td colSpan={6}>No orders found.</td></tr>}
         </tbody>
       </table>
 

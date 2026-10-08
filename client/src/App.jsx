@@ -25,6 +25,7 @@ import Orders from './pages/FrontOffice/Orders';
 import EditOrder from './pages/FrontOffice/EditOrder';
 import BillPrint from './pages/FrontOffice/BillPrint';
 import Laboratory from './pages/Lab/Laboratory';
+import PendingTests from './pages/Lab/PendingTests';
 import LabReport from './pages/Lab/LabReport';
 import Reports from './pages/Manager/Reports';
 import ReportBranding from './pages/Manager/ReportBranding';
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="orders/:billId/edit" element={<ProtectedRoute type="CLIENT_USER" roles={['FRONT_OFFICE', 'MANAGER']}><EditOrder /></ProtectedRoute>} />
         <Route path="billing/print/:billId" element={<ProtectedRoute type="CLIENT_USER" roles={['FRONT_OFFICE', 'MANAGER']}><BillPrint /></ProtectedRoute>} />
         <Route path="lab" element={<ProtectedRoute type="CLIENT_USER" roles={['LAB_USER']}><Laboratory /></ProtectedRoute>} />
+        <Route path="pending-tests" element={<ProtectedRoute type="CLIENT_USER" roles={['FRONT_OFFICE', 'LAB_USER', 'MANAGER']}><PendingTests /></ProtectedRoute>} />
         <Route path="report/:billId" element={<ProtectedRoute type="CLIENT_USER" roles={['LAB_USER', 'FRONT_OFFICE', 'MANAGER']}><LabReport /></ProtectedRoute>} />
         <Route path="reports" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><Reports /></ProtectedRoute>} />
         <Route path="report-branding" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><ReportBranding /></ProtectedRoute>} />

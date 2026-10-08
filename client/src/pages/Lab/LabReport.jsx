@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import ShareButton from '../../components/ShareButton';
+import { ReportRemarks } from '../../components/Remarks';
 
 function formatDateTime(d) {
   if (!d) return '—';
@@ -121,8 +122,10 @@ export default function LabReport() {
         </div>
 
         {tests.map((t) => {
-          const numericParams = t.parameters.filter((p) => !p.isInterpretation);
-          const interpretationParams = t.parameters.filter((p) => p.isInterpretation && p.value);
+          // Parameters left empty at result entry are optional and not printed.
+          const hasValue = (p) => p.value != null && p.value.toString().trim() !== '';
+          const numericParams = t.parameters.filter((p) => !p.isInterpretation && hasValue(p));
+          const interpretationParams = t.parameters.filter((p) => p.isInterpretation && hasValue(p));
           return (
             <div key={t.barcode} style={{ marginTop: 24 }}>
               <h4 style={{ background: '#f1f5f9', padding: '6px 10px', borderRadius: 6 }}>{t.testName}</h4>
@@ -155,6 +158,7 @@ export default function LabReport() {
                   <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', color: '#475569' }}>{t.interpretation}</p>
                 </div>
               )}
+              <ReportRemarks text={t.remarks} />
             </div>
           );
         })}
