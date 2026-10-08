@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api/client';
 
-const TONE_ICON = { info: 'ℹ', warning: '⚠', success: '✔' };
 
 /**
  * Captions Chief Admin publishes to every client (active, and today within
@@ -31,7 +30,6 @@ export default function Announcements() {
     <span className="ticker-run" aria-hidden={copy ? 'true' : undefined}>
       {items.map((a) => (
         <span key={`${copy}-${a.id}`} className={`ticker-item ${a.tone || 'info'}`}>
-          <span className="ticker-icon">{TONE_ICON[a.tone] || TONE_ICON.info}</span>
           {a.message}
         </span>
       ))}

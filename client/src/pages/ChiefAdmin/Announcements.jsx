@@ -6,7 +6,6 @@ const TONES = [
   { key: 'warning', label: 'Warning (amber)' },
   { key: 'success', label: 'Success (green)' },
 ];
-const TONE_ICON = { info: 'ℹ', warning: '⚠', success: '✔' };
 
 function blankForm() {
   return { message: '', tone: 'info', active: true, fromDate: '', toDate: '' };
@@ -164,7 +163,6 @@ export default function Announcements() {
           <div className="caption-preview">
             <span className="cell-sub">Preview (as clients see it)</span>
             <div className={`announcement ${form.tone}`}>
-              <span className="announcement-icon">{TONE_ICON[form.tone]}</span>
               <span className="announcement-text">{form.message}</span>
             </div>
           </div>
