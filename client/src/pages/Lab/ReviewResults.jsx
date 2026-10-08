@@ -351,7 +351,7 @@ export default function ReviewResults({ group, focusSampleId, onClose, onSaved }
                               {p.parameterCode && <span className="rt-code">{p.parameterCode}</span>}
                               {p.parameterName}
                             </td>
-                            <td>
+                            <td className="rt-result">
                               <div className="rt-input">
                                 <input
                                   className={flag ? 'abnormal' : ''}
@@ -363,8 +363,8 @@ export default function ReviewResults({ group, focusSampleId, onClose, onSaved }
                                 {flag && <span className={`rt-flag ${flag}`} title={flag === 'H' ? 'Above normal range' : 'Below normal range'}>{flag === 'H' ? '▲ H' : '▼ L'}</span>}
                               </div>
                             </td>
-                            <td className="rt-range">{hasRange ? `${p.normalRangeLow} – ${p.normalRangeHigh}` : '—'}{hasRange && p.unit ? <span className="rt-unit"> {p.unit}</span> : null}</td>
-                            <td className="rt-prev">
+                            <td className="rt-range" data-label="Normal">{hasRange ? `${p.normalRangeLow} – ${p.normalRangeHigh}` : '—'}{hasRange && p.unit ? <span className="rt-unit"> {p.unit}</span> : null}</td>
+                            <td className="rt-prev" data-label="Previous">
                               {prev ? (
                                 <>
                                   <span className={prev.isAbnormal ? 'prev-abnormal' : ''}>{prev.value}</span>
@@ -372,7 +372,7 @@ export default function ReviewResults({ group, focusSampleId, onClose, onSaved }
                                 </>
                               ) : <span className="rt-none">—</span>}
                             </td>
-                            <td className="rt-delta">
+                            <td className="rt-delta" data-label="Delta">
                               {delta ? (
                                 <span className={`delta-pill ${delta.diff > 0 ? 'up' : delta.diff < 0 ? 'down' : 'same'}`}>
                                   {delta.diff > 0 ? '▲' : delta.diff < 0 ? '▼' : '='} {formatNumber(Math.abs(delta.diff))}

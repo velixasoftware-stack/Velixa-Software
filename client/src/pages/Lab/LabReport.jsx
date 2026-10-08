@@ -68,7 +68,7 @@ export default function LabReport() {
 
   return (
     <div>
-      <div className="no-print" style={{ marginBottom: 16, display: 'flex', gap: 16, alignItems: 'center' }}>
+      <div className="no-print report-toolbar">
         <Link to="/app/orders">&larr; Back to Orders</Link>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, fontWeight: 'normal' }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={includeHeader} onChange={(e) => setIncludeHeader(e.target.checked)} />
@@ -80,7 +80,7 @@ export default function LabReport() {
             Include AI Trend Report
           </label>
         )}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="report-toolbar-actions">
           <ShareButton apiPath={`/report-view/bills/${billId}/report/share`} />
           <button onClick={() => window.print()}>Print Report</button>
         </div>

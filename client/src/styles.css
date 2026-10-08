@@ -647,6 +647,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .stat-tile .value { font-size: 24px; font-weight: 700; }
 .stat-tile .label { font-size: 12px; color: #64748b; }
 
+.report-toolbar { margin-bottom: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.report-toolbar-actions { margin-left: auto; display: flex; gap: 8px; }
 .report-sheet { background: #fff; padding: 32px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); max-width: 820px; margin: 0 auto; }
 /* Fixed-height regardless of whether a header is actually shown inside it, so
    unchecking "Include letterhead/logo header" leaves the same blank space at
@@ -1235,4 +1237,116 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 @media (prefers-reduced-motion: reduce) {
   .ticker-track { animation: none; white-space: normal; }
   .ticker-run[aria-hidden] { display: none; }
+}
+
+/* ===== Phone layout (<= 640px) ============================================
+   Laptop/desktop layout above is untouched; everything here only kicks in on
+   narrow screens. */
+@media (max-width: 640px) {
+  .main-content { padding: 10px; }
+  .card { padding: 10px; border-radius: 10px; }
+
+  /* 16px inputs stop iPhone Safari from auto-zooming into a field on focus. */
+  input, select, textarea { font-size: 16px; }
+  input[type='date'] { font-size: 14px; }
+
+  /* Top bar: smaller buttons so it fits on one or two lines. */
+  .main-content > .topbar { gap: 6px; margin-bottom: 8px; }
+  .main-content > .topbar .topbar-right { gap: 6px; }
+  .main-content > .topbar button { padding: 4px 8px; font-size: 11.5px; }
+  .main-content > .topbar .avatar-circle { width: 26px; height: 26px; }
+
+  /* Every data table becomes a list of small labelled cards (labels are
+     filled in from the column headings by utils/responsiveTables.js). */
+  .card:has(table.rt-stack) { overflow-x: visible; }
+  table.rt-stack, table.rt-stack > tbody { display: block; width: 100%; }
+  table.rt-stack > thead { display: none; }
+  table.rt-stack > tbody > tr {
+    display: block; background: #fff; border: 1px solid #e8edf3; border-radius: 10px;
+    padding: 6px 10px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  }
+  table.rt-stack > tbody > tr:hover > td { background: transparent; }
+  /* Label in a left column; the cell's own lines (e.g. order no + date) stack on the right. */
+  table.rt-stack > tbody > tr > td {
+    display: grid; grid-template-columns: minmax(78px, 38%) 1fr; column-gap: 12px; align-items: start;
+    padding: 4px 0 !important; border: none; text-align: right; white-space: normal !important; max-width: none !important;
+  }
+  table.rt-stack > tbody > tr > td > * { grid-column: 2; justify-self: end; text-align: right; }
+  table.rt-stack > tbody > tr > td::before {
+    content: attr(data-label); grid-column: 1; grid-row: 1 / span 6; text-align: left;
+    font-size: 11px; font-weight: 600; color: #64748b; padding-top: 1px;
+  }
+  table.rt-stack > tbody > tr > td:not([data-label]), table.rt-stack > tbody > tr > td[data-label=''] { grid-template-columns: 1fr; }
+  table.rt-stack > tbody > tr > td:not([data-label]) > * { grid-column: 1; }
+  table.rt-stack > tbody > tr > td:not([data-label])::before,
+  table.rt-stack > tbody > tr > td[data-label='']::before { content: none; }
+  table.rt-stack > tbody > tr > td.rt-full { display: block; text-align: left; }
+  table.rt-stack > tbody > tr > td:empty { display: none; }
+  /* The per-order Tests summary needs the whole card width - label above it. */
+  table.rt-stack > tbody > tr > td:has(.order-tests) { grid-template-columns: 1fr; row-gap: 3px; }
+  table.rt-stack > tbody > tr > td:has(.order-tests)::before { grid-row: auto; }
+  table.rt-stack > tbody > tr > td:has(.order-tests) > * { grid-column: 1; justify-self: stretch; text-align: left; }
+  table.rt-stack .order-tests { max-width: none; min-width: 0; }
+  table.rt-stack .test-chip { max-width: 46%; }
+  table.rt-stack .order-actions, table.rt-stack .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+  table.rt-stack .cell-sub { white-space: normal; }
+  .order-tests-row > td { background: transparent !important; }
+
+  /* Page headers & filters: full-width rows that wrap neatly. */
+  .compact-header { gap: 6px; }
+  .compact-filters { width: 100%; }
+  .compact-filters .df-field { flex: 1 1 44%; }
+  .compact-filters .df-field input { width: 100%; }
+  .compact-filters input:not([type='date']) { flex: 1 1 100%; width: 100%; }
+  .status-legend { font-size: 10.5px; gap: 3px 10px; margin-top: 0; }
+  .status-tabs.compact { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .status-tabs.compact::-webkit-scrollbar { display: none; }
+  .status-tabs.compact .status-tab { flex: none; }
+  .lab-cards { grid-template-columns: 1fr; }
+
+  /* Review Results: test list on top (bigger), each parameter a small block:
+     name / result + H-L flag / normal - previous - delta. */
+  .review-header { padding: 8px 12px; }
+  .review-sidebar { max-height: 34vh; }
+  .review-main { padding: 8px; }
+  .result-head-wrap { display: none; }
+  .result-table, .result-table > tbody { display: block; width: 100%; }
+  .result-table colgroup { display: none; }
+  .result-table > tbody > tr { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; padding: 8px 2px; border-bottom: 1px solid #f1f5f9; }
+  .result-table > tbody > tr > td { display: block; border: none !important; padding: 0 !important; overflow: visible; background: none !important; white-space: normal; }
+  .result-table td.rt-param, .result-table td.rt-result { grid-column: 1 / -1; }
+  .result-table td[data-label]::before { content: attr(data-label); display: block; font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+  .rt-input input { width: 120px; height: 34px; font-size: 16px; }
+  .remarks-box-head { flex-wrap: wrap; }
+  .review-footer { padding: 8px 12px; }
+  .review-footer button { flex: 1 1 100%; }
+
+  /* Reports dashboard */
+  .dash-bar-controls { width: 100%; }
+  .dash-bar .df-field { flex: 1 1 44%; }
+  .dash-bar input[type='date'] { width: 100%; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .kpi-value { font-size: 16px; }
+
+  /* Masters & Pricing, Login Captions */
+  .masters-head { gap: 8px; }
+  .masters-row .masters-search { width: 100%; margin-left: 0; }
+  .masters-row label.grow, .masters-row > div.grow { flex: 1 1 100%; }
+  .bulk-box .masters-row { flex-wrap: wrap; }
+  .caption-fields > label { flex: 1 1 44%; }
+  .caption-fields select, .caption-fields input { width: 100%; min-width: 0; }
+  .caption-actions { margin-left: 0; width: 100%; }
+  .caption-actions button { flex: 1; }
+
+  /* Report page toolbar: back link + options on their own lines, buttons full width. */
+  .report-toolbar { gap: 8px 14px; font-size: 12.5px; }
+  .report-toolbar-actions { margin-left: 0; width: 100%; }
+  .report-toolbar-actions > * { flex: 1; }
+  .report-sheet { padding: 14px; }
+
+  /* Chief Admin dashboard: two stat cards per row instead of one tall column. */
+  .dash-stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .dash-stat-card { padding: 10px; gap: 8px; }
+  .dash-stat-icon { width: 32px; height: 32px; }
+  .dash-header { flex-wrap: wrap; }
 }

@@ -94,14 +94,14 @@ export default function Dashboard() {
       <div className="card">
         <div className="topbar">
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="team" size={16} /> Clients</h3>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxWidth: '100%' }}>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by client code or name…"
-              style={{ width: 240 }}
+              style={{ width: 240, maxWidth: '100%' }}
             />
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: 180 }}>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: 180, maxWidth: '100%' }}>
               <option value="">All statuses</option>
               <option value="PAID">Paid</option>
               <option value="PENDING">Pending</option>
