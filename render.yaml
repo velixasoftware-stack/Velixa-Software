@@ -3,7 +3,8 @@ services:
     name: hms-lims
     runtime: node
     plan: free
-    buildCommand: npm install --prefix client && npm run build --prefix client && npm install --prefix server
+    # --include=dev: NODE_ENV=production would otherwise skip vite (a devDependency) and fail the client build.
+    buildCommand: npm install --include=dev --prefix client && npm run build --prefix client && npm install --prefix server
     startCommand: npm start --prefix server
     envVars:
       - key: NODE_ENV
