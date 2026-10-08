@@ -7,6 +7,21 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# API and uploaded files are served by the Node server on Render. Proxying
+# them (status 200) keeps the browser on one origin, so no CORS setup is
+# needed. Must come before the SPA catch-all below.
+[[redirects]]
+  from = "/api/*"
+  to = "https://hms-lims.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/uploads/*"
+  to = "https://hms-lims.onrender.com/uploads/:splat"
+  status = 200
+  force = true
+
 # React Router client-side routes need every path to fall through to
 # index.html so the SPA's own router can handle it.
 [[redirects]]

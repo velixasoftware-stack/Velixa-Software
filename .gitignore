@@ -8,3 +8,4 @@ _tmp_*
 .env.supabase.bak
 database/*.sql
 docs/*.pdf
+server/.env*.bak
