@@ -283,7 +283,13 @@ export default function ClientDetail() {
     <div>
       <p><Link to="/chief-admin">&larr; Back to Dashboard</Link></p>
       {readOnly && (
-        <p className="readonly-banner">View only - this client is assigned to you. Only an Admin can change client details, users, prices or access.</p>
+        <div className="readonly-banner">
+          <span>View only - this client is assigned to you. Only an Admin can change client details, users, prices or access.</span>
+          {/* Outside the disabled fieldset below, so it stays usable: MARKETING may open their assigned clients' app. */}
+          <button type="button" onClick={handleLoginAsClient} disabled={loginAsBusy}>
+            {loginAsBusy ? 'Opening…' : 'Log In as This Client'}
+          </button>
+        </div>
       )}
       <fieldset disabled={readOnly} className="readonly-fieldset">
 

@@ -61,7 +61,11 @@ async function clientUserLogin(req, res) {
     // button opens, so it's the same one account either way.
     const chiefAdmin = await ChiefAdmin.findOne({ where: { username: { [Op.iLike]: username } }, include: [Role] });
     const chiefAdminOk = chiefAdmin && chiefAdmin.active && (await bcrypt.compare(password, chiefAdmin.passwordHash));
-    if (chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'ADMIN')) {
+    // ADMIN may do this for any client; MARKETING only for clients assigned to them.
+    const isAdmin = chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'ADMIN');
+    const isAssignedMarketing = chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'MARKETING')
+      && (client.salesPerson || '').toLowerCase() === chiefAdmin.username.toLowerCase();
+    if (isAdmin || isAssignedMarketing) {
       const session = await mintSystemUserSession(client);
       if (session.error) return res.status(400).json({ message: session.error });
       console.log(`Chief Admin "${chiefAdmin.username}" logged into client ${client.clientCode} (${client.clientName}) using their own credentials.`);

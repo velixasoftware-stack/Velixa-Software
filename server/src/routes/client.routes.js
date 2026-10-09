@@ -36,9 +36,9 @@ router.get('/marketing-persons', clientCtrl.listMarketingPersons);
 router.get('/next-code', clientCtrl.previewNextClientCode);
 router.get('/:id', assignedClientOnly, clientCtrl.getClient);
 router.put('/:id', requireAdminRole, clientCtrl.updateClient);
-// Opens this client's app as their auto-provisioned support login - ADMIN
-// only, since it grants full access to that client's data without a password.
-router.post('/:id/impersonate', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN), clientCtrl.impersonateClient);
+// Opens this client's app as their auto-provisioned support login - ADMIN for
+// any client; MARKETING only for clients assigned to them (assignedClientOnly).
+router.post('/:id/impersonate', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING), assignedClientOnly, clientCtrl.impersonateClient);
 
 router.get('/:clientId/subscriptions', assignedClientOnly, subCtrl.listSubscriptions);
 router.get('/:clientId/subscriptions/current', assignedClientOnly, subCtrl.getCurrentSubscription);
