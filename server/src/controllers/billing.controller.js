@@ -9,28 +9,32 @@ const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 
 /**
- * Next bill number for a client: its Client Code + a running number kept
- * separately per client, e.g. CLI0007-00001, CLI0007-00002 ... and DEMO001-00001
- * for another client. Must run inside the bill's transaction: the per-client
- * advisory lock makes two bills saved at the same moment wait for each other,
- * so they can never be given the same number. Older "INV-<timestamp>" bills
- * don't match the pattern and are simply ignored when counting.
+ * Next bill number for a client: its Client Code immediately followed by a
+ * 5-digit running number kept separately per client, e.g. DEMO00100001,
+ * DEMO00100002 ... and CLI000700001 for another client. Bills numbered in the
+ * earlier hyphenated form (DEMO001-00001) still count, so the sequence just
+ * continues. Must run inside the bill's transaction: the per-client advisory
+ * lock makes two bills saved at the same moment wait for each other, so they
+ * can never be given the same number. Old "INV-<timestamp>" bills are ignored.
  */
 async function generateBillNo(clientId, transaction) {
   await sequelize.query('SELECT pg_advisory_xact_lock(:key)', { replacements: { key: 900000000 + Number(clientId) }, transaction });
   const client = await Client.findByPk(clientId, { attributes: ['clientCode'], transaction });
-  const prefix = `${client?.clientCode || `C${clientId}`}-`;
+  const code = client?.clientCode || `C${clientId}`;
   const rows = await Bill.findAll({
-    where: { clientId, billNo: { [Op.like]: `${prefix}%` } },
+    where: { clientId, billNo: { [Op.like]: `${code}%` } },
     attributes: ['billNo'],
     raw: true,
     transaction,
   });
+  // Number part = whatever follows the client code (and the old optional
+  // hyphen), counted only when it is all digits.
   const highest = rows.reduce((max, { billNo }) => {
-    const n = parseInt(billNo.slice(prefix.length), 10);
-    return Number.isNaN(n) ? max : Math.max(max, n);
+    if (!billNo || !billNo.startsWith(code)) return max;
+    const rest = billNo.slice(code.length).replace(/^-/, '');
+    return /^\d{5,}$/.test(rest) ? Math.max(max, parseInt(rest, 10)) : max;
   }, 0);
-  return `${prefix}${String(highest + 1).padStart(5, '0')}`;
+  return `${code}${String(highest + 1).padStart(5, '0')}`;
 }
 
 function generateBarcode() {
