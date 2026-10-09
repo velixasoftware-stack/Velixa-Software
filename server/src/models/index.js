@@ -542,6 +542,10 @@ const Sample = sequelize.define('Sample', {
     defaultValue: 'PENDING_COLLECTION',
   },
   collectedAt: { type: DataTypes.DATE },
+  // Audit trail of the lab steps (who + when), shown on Reports > Lab Details.
+  collectedBy: { type: DataTypes.STRING },
+  resultEnteredAt: { type: DataTypes.DATE },
+  resultEnteredBy: { type: DataTypes.STRING },
   // Optional per-test remarks printed on the report under "Remarks".
   // remarksBig: entered in the large box (multi-line interpretation, may hold
   // a pasted table) rather than the one-line box - kept so it reopens the same way.
@@ -580,6 +584,10 @@ const Report = sequelize.define('Report', {
   // historical record of the earlier revoke even after that happens.
   revokedAt: { type: DataTypes.DATE },
   revokedReason: { type: DataTypes.STRING },
+  // Who verified / released / revoked (audit trail, alongside the *At times).
+  verifiedBy: { type: DataTypes.STRING },
+  releasedBy: { type: DataTypes.STRING },
+  revokedBy: { type: DataTypes.STRING },
   ...AUDIT_FIELDS,
 }, { tableName: 'report' });
 

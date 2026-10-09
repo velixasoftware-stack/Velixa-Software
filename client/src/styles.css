@@ -1375,16 +1375,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .readonly-fieldset:disabled button { display: none; }
 .readonly-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; margin: 0 0 10px; }
 
-/* Reports - Lab Details (Samples): one vertical card per sample */
-.lab-detail-count { font-size: 11px; font-weight: 700; color: #475569; background: #e2e8f0; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
-.lab-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.lab-detail-card { --c: #94a3b8; border: 1px solid #e8edf3; border-left: 4px solid var(--c); border-radius: 10px; padding: 9px 11px; background: #fff; }
-.lab-detail-card.amber { --c: #f59e0b; } .lab-detail-card.sky { --c: #60a5fa; } .lab-detail-card.blue { --c: #2563eb; }
-.lab-detail-card.teal { --c: #14b8a6; } .lab-detail-card.green { --c: #22c55e; } .lab-detail-card.rose { --c: #f87171; }
-.ldc-test { font-weight: 700; font-size: 12.5px; color: #0f172a; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 6px; }
-.ldc-code { font-size: 10.5px; font-weight: 700; color: #64748b; background: #f1f5f9; border-radius: 5px; padding: 0 6px; align-self: center; }
-.lab-detail-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
-.lab-detail-card dt { color: #64748b; font-weight: 600; }
-.lab-detail-card dd { margin: 0; color: #1e293b; text-align: right; word-break: break-all; }
-.lab-detail-card dd.mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
-@media print { .lab-detail-card { break-inside: avoid; } }
+/* Reports - Lab Details (Samples) audit table */
+.lab-audit-table td { vertical-align: top; }
+.lab-audit-table .audit-cell { white-space: nowrap; font-size: 12px; }
+.audit-by { font-size: 10.5px; color: #64748b; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }

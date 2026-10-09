@@ -7,6 +7,7 @@ const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
+const { getCurrentActor } = require('../utils/auditContext');
 
 // A client doing result entry sees every universal parameter plus whatever
 // parameters it added for itself for that test - never another client's own.
@@ -119,7 +120,7 @@ async function collectSample(req, res) {
     return res.status(400).json({ message: `Sample already ${sample.status}` });
   }
 
-  await sample.update({ status: 'COLLECTED', collectedAt: new Date() });
+  await sample.update({ status: 'COLLECTED', collectedAt: new Date(), collectedBy: getCurrentActor() });
   return res.json(sample);
 }
 
@@ -175,7 +176,7 @@ async function enterResults(req, res) {
     if (record.value !== r.value) await record.update({ value: r.value, isAbnormal });
   }
 
-  const update = { status: 'RESULT_ENTERED' };
+  const update = { status: 'RESULT_ENTERED', resultEnteredAt: new Date(), resultEnteredBy: getCurrentActor() };
   if (remarks !== undefined) {
     update.remarks = remarks?.toString().trim() || null;
     update.remarksBig = !!remarksBig;
@@ -197,7 +198,7 @@ async function verifySample(req, res) {
   }
 
   await sample.update({ status: 'VERIFIED' });
-  await sample.Report.update({ status: 'VERIFIED', verifiedAt: new Date() });
+  await sample.Report.update({ status: 'VERIFIED', verifiedAt: new Date(), verifiedBy: getCurrentActor() });
   return res.json({ message: 'Sample verified' });
 }
 
@@ -220,7 +221,7 @@ async function releaseSample(req, res) {
   }
 
   await sample.update({ status: 'RELEASED' });
-  await sample.Report.update({ status: 'RELEASED', releasedAt: new Date(), releasedByUserId: req.user.id });
+  await sample.Report.update({ status: 'RELEASED', releasedAt: new Date(), releasedByUserId: req.user.id, releasedBy: getCurrentActor() });
   return res.json({ message: 'Report released' });
 }
 
@@ -240,7 +241,7 @@ async function revokeReport(req, res) {
   }
 
   await sample.update({ status: 'VERIFIED' });
-  await sample.Report.update({ status: 'REVOKED', revokedAt: new Date(), revokedReason: reason.trim() });
+  await sample.Report.update({ status: 'REVOKED', revokedAt: new Date(), revokedReason: reason.trim(), revokedBy: getCurrentActor() });
   return res.json({ message: 'Report revoked' });
 }
 

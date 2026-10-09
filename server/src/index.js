@@ -57,6 +57,12 @@ async function start() {
   // table was first created has to be added out-of-band here — idempotent, safe to run every boot.
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS method VARCHAR(255)');
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS sequence INTEGER');
+  for (const col of ['"collectedBy" VARCHAR(255)', '"resultEnteredAt" TIMESTAMPTZ', '"resultEnteredBy" VARCHAR(255)']) {
+    await sequelize.query(`ALTER TABLE sample ADD COLUMN IF NOT EXISTS ${col}`);
+  }
+  for (const col of ['"verifiedBy" VARCHAR(255)', '"releasedBy" VARCHAR(255)', '"revokedBy" VARCHAR(255)']) {
+    await sequelize.query(`ALTER TABLE report ADD COLUMN IF NOT EXISTS ${col}`);
+  }
   await sequelize.query(`ALTER TABLE client_role_screen ADD COLUMN IF NOT EXISTS "grantedScreens" JSON NOT NULL DEFAULT '[]'`);
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT');

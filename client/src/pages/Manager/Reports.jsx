@@ -31,6 +31,18 @@ function Kpi({ tone, icon, label, value, hint }) {
   );
 }
 
+/** One audit step on Lab Details: when it happened, and by whom underneath. */
+function AuditCell({ at, by, note }) {
+  if (!at) return <td>—</td>;
+  return (
+    <td className="audit-cell">
+      {new Date(at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: 'numeric', minute: '2-digit' })}
+      {by && <div className="audit-by">by {by}</div>}
+      {note && <div className="audit-by" title={note}>“{note}”</div>}
+    </td>
+  );
+}
+
 /** A minimal inline bar chart - no charting library needed for a handful of bars. */
 function BarChart({ data, valueKey, labelKey }) {
   if (data.length === 0) return <p style={{ color: '#94a3b8', fontSize: 13 }}>No data for this period.</p>;
@@ -224,22 +236,34 @@ export default function Reports() {
       </div>
 
       <div className="card">
-        <h3>Lab Details (Samples) <span className="lab-detail-count">{labDetails.length}</span></h3>
-        {/* One card per sample, its details listed top to bottom. */}
-        <div className="lab-detail-grid">
-          {labDetails.map((d) => (
-            <div key={d.barcode} className={`lab-detail-card ${STATUS_TONE[d.status] || 'slate'}`}>
-              <div className="ldc-test">{d.testName}<span className="ldc-code">{d.testCode}</span></div>
-              <dl>
-                <dt>Barcode</dt><dd className="mono">{d.barcode}</dd>
-                <dt>Sample Status</dt><dd><span className={`status-pill ${d.status}`}><i className="dot" />{STATUS_LABEL[d.status] || d.status}</span></dd>
-                <dt>Report Status</dt><dd>{d.reportStatus || '—'}</dd>
-                <dt>Collected At</dt><dd>{d.collectedAt ? new Date(d.collectedAt).toLocaleString('en-IN') : '—'}</dd>
-              </dl>
-            </div>
-          ))}
-          {labDetails.length === 0 && <p className="cell-sub">No samples.</p>}
-        </div>
+        <h3>Lab Details (Samples)</h3>
+        <table className="lab-audit-table">
+          <thead>
+            <tr>
+              <th>Barcode</th><th>Test Code</th><th>Test Name</th><th>Bill / Patient</th>
+              <th>Sample Status</th><th>Report Status</th>
+              <th>Registered</th><th>Collected</th><th>Result Entered</th><th>Verified</th><th>Released</th><th>Revoked</th><th>Last Update</th>
+            </tr>
+          </thead>
+          <tbody>
+            {labDetails.map((d) => (
+              <tr key={d.barcode}>
+                <td>{d.barcode}</td><td>{d.testCode}</td><td>{d.testName}</td>
+                <td>{d.billNo || '—'}<div className="audit-by">{[d.patientName, d.umr].filter(Boolean).join(' · ')}</div></td>
+                <td>{d.itemStatus === 'CANCELLED' ? 'Cancelled' : (STATUS_LABEL[d.status] || d.status)}</td>
+                <td>{d.reportStatus || '—'}</td>
+                <AuditCell at={d.registeredAt} by={d.registeredBy} />
+                <AuditCell at={d.collectedAt} by={d.collectedBy} />
+                <AuditCell at={d.resultEnteredAt} by={d.resultEnteredBy} />
+                <AuditCell at={d.verifiedAt} by={d.verifiedBy} />
+                <AuditCell at={d.releasedAt} by={d.releasedBy} />
+                <AuditCell at={d.revokedAt} by={d.revokedBy} note={d.revokedReason} />
+                <AuditCell at={d.lastUpdatedAt} by={d.lastUpdatedBy} />
+              </tr>
+            ))}
+            {labDetails.length === 0 && <tr><td colSpan={13}>No samples.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

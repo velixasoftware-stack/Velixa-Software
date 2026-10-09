@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const XLSX = require('xlsx');
-const { Bill, BillItem, TestMaster, Sample, Report, Patient, Refund, BillDiscount } = require('../models');
+const { Bill, BillItem, TestMaster, Sample, Report, Patient, Refund, BillDiscount, Result, ClientUser } = require('../models');
 
 /** Sum of everything refunded on a bill - already cancelled & paid back, so it must
  * never be counted as still "outstanding"/due from the patient. */
@@ -133,21 +133,48 @@ async function labDetails(req, res) {
   const samples = await Sample.findAll({
     where: { clientId, ...dateRangeWhere(from, to) },
     include: [
-      { model: BillItem, include: [TestMaster] },
-      Report,
+      { model: BillItem, include: [TestMaster, { model: Bill, include: [Patient] }] },
+      { model: Report, include: [{ model: ClientUser, as: 'ReleasedByUser', attributes: ['username'] }] },
+      { model: Result, attributes: ['createdAt', 'createdBy'] },
     ],
     order: [['createdAt', 'DESC']],
     limit: 200,
   });
 
-  return res.json(samples.map((s) => ({
-    barcode: s.barcode,
-    testCode: s.BillItem?.TestMaster?.testCode,
-    testName: s.BillItem?.TestMaster?.testName,
-    status: s.status,
-    reportStatus: s.Report?.status,
-    collectedAt: s.collectedAt,
-  })));
+  // Full audit trail per sample - who did each step and when. Samples from
+  // before these columns existed fall back to what was recorded at the time
+  // (e.g. result entry = when its results were first saved).
+  return res.json(samples.map((s) => {
+    const firstResult = [...(s.Results || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+    const r = s.Report;
+    const bill = s.BillItem?.Bill;
+    return {
+      barcode: s.barcode,
+      testCode: s.BillItem?.TestMaster?.testCode,
+      testName: s.BillItem?.TestMaster?.testName,
+      billNo: bill?.billNo,
+      patientName: bill?.Patient?.name,
+      umr: bill?.Patient?.umr,
+      status: s.status,
+      itemStatus: s.BillItem?.status,
+      reportStatus: r?.status,
+      registeredAt: s.createdAt,
+      registeredBy: s.createdBy,
+      collectedAt: s.collectedAt,
+      collectedBy: s.collectedBy,
+      resultEnteredAt: s.resultEnteredAt || firstResult?.createdAt || null,
+      resultEnteredBy: s.resultEnteredBy || firstResult?.createdBy || null,
+      verifiedAt: r?.verifiedAt,
+      verifiedBy: r?.verifiedBy,
+      releasedAt: r?.releasedAt,
+      releasedBy: r?.releasedBy || r?.ReleasedByUser?.username || null,
+      revokedAt: r?.revokedAt,
+      revokedBy: r?.revokedBy,
+      revokedReason: r?.revokedReason,
+      lastUpdatedAt: s.updatedAt,
+      lastUpdatedBy: s.updatedBy,
+    };
+  }));
 }
 
 // GET /api/reports/test-wise-revenue?from=&to=
