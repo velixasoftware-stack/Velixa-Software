@@ -63,7 +63,6 @@ export default function LabReport() {
   if (!report) return <p>Loading…</p>;
 
   const { patient, client, tests, doctor } = report;
-  const collectedAt = tests.map((t) => t.collectedAt).filter(Boolean).sort()[0];
   const releasedAt = tests.map((t) => t.releasedAt).filter(Boolean).sort().slice(-1)[0];
 
   return (
@@ -117,7 +116,7 @@ export default function LabReport() {
           <div><span>Mobile</span><strong>{patient?.mobile || '—'}</strong></div>
           <div><span>Referred By</span><strong>{report.bill.referredDoctor ? `Dr. ${report.bill.referredDoctor}` : 'Self'}</strong></div>
           <div><span>Billed To</span><strong>{report.bill.payor || 'Self / Direct'}</strong></div>
-          <div><span>Collected On</span><strong>{formatDateTime(collectedAt)}</strong></div>
+          <div><span>Bill Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
           <div><span>Report Date</span><strong>{formatDateTime(releasedAt)}</strong></div>
         </div>
 

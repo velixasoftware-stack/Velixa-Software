@@ -1013,9 +1013,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 }
 .icon-btn:hover { background: #e2e8f0; }
 
+/* Zero page margin leaves the browser no room for its own header/footer
+   (date, page title, URL, page numbers) on reports and bills - the content's
+   own padding below provides the white border instead. */
+@page { margin: 0; }
 @media print {
   .sidebar, .sidebar-overlay, .hamburger-btn, .topbar, .ticker, .no-print { display: none !important; }
-  .main-content { padding: 0 !important; }
+  .main-content { padding: 10mm 12mm !important; }
   .app-shell { display: block !important; }
   .report-sheet { box-shadow: none; max-width: 100%; }
 }
@@ -1350,3 +1354,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
   .dash-stat-icon { width: 32px; height: 32px; }
   .dash-header { flex-wrap: wrap; }
 }
+
+/* Parameter display order (Test Master / Test Parameters) */
+.param-order { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.param-order-no { min-width: 18px; font-weight: 700; color: #334155; text-align: center; }
+.param-order-btn { width: 22px; height: 22px; padding: 0; font-size: 9px; line-height: 1; border-radius: 5px; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+.param-order-btn:hover:not(:disabled) { background: #e0e7ff; }
+.param-order-btn:disabled { background: #f8fafc; color: #cbd5e1; border-color: #e2e8f0; }

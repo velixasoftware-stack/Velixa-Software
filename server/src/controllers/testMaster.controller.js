@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const XLSX = require('xlsx');
 const { TestGroup, TestMaster, ParameterMaster, ParameterNormalRange } = require('../models');
+const { sortParameters } = require('../utils/parameterOrder');
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Any'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
@@ -114,7 +115,7 @@ async function listTests(req, res) {
     const assigned = (json.AssignedParameters || [])
       .filter((p) => !ownedIds.has(p.id))
       .map((p) => ({ ...p, isAssigned: true }));
-    json.ParameterMasters = [...owned, ...assigned];
+    json.ParameterMasters = sortParameters([...owned, ...assigned]);
     delete json.AssignedParameters;
     return json;
   });
@@ -174,9 +175,13 @@ async function addParameter(req, res) {
   if (existing) return res.status(200).json(existing);
 
   const parameterCode = await generateParameterCode();
+  // A new parameter goes to the end of its test's order unless a sequence is given.
+  const seqGiven = req.body.sequence !== undefined && req.body.sequence !== '' && req.body.sequence !== null;
+  const maxSeq = seqGiven ? null : await ParameterMaster.max('sequence', { where: { testId: test.id } });
   const parameter = await ParameterMaster.create({
     testId: test.id, clientId, parameterCode, parameterName, unit, method, normalRangeLow, normalRangeHigh, description,
     isInterpretation: !!isInterpretation,
+    sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
   });
 
   for (const r of normalRanges || []) {
@@ -224,6 +229,36 @@ async function assignParameter(req, res) {
     if (!alreadyLinked) await test.addAssignedParameter(parameter);
   }
   return res.status(200).json(parameter);
+}
+
+// PUT /api/.../tests/:testId/parameter-order   Body: { parameterIds: [id, id, ...] }
+// Saves the display order of a test's parameters (its own + assigned ones):
+// the first id gets sequence 1, the next 2, and so on. Used for result entry
+// and the printed report.
+async function reorderParameters(req, res) {
+  const test = await TestMaster.findByPk(req.params.testId);
+  if (!test) return res.status(404).json({ message: 'Test not found' });
+  const ids = Array.isArray(req.body.parameterIds) ? req.body.parameterIds.map(Number).filter(Boolean) : [];
+  if (ids.length === 0) return res.status(400).json({ message: 'parameterIds is required' });
+
+  // Only parameters that actually belong to (or are assigned to) this test.
+  const owned = await ParameterMaster.findAll({ where: { id: ids, testId: test.id }, attributes: ['id'] });
+  const assigned = await test.getAssignedParameters({ where: { id: ids }, attributes: ['id'], joinTableAttributes: [] });
+  const allowed = new Set([...owned, ...assigned].map((p) => p.id));
+  const clientId = requesterClientId(req);
+  if (clientId) {
+    // A client can't reorder another client's private parameters.
+    const foreign = await ParameterMaster.count({ where: { id: [...allowed], clientId: { [Op.ne]: clientId } } });
+    if (foreign > 0) return res.status(403).json({ message: 'You cannot reorder another client\'s parameters' });
+  }
+
+  let seq = 0;
+  for (const id of ids) {
+    if (!allowed.has(id)) continue;
+    seq += 1;
+    await ParameterMaster.update({ sequence: seq }, { where: { id } });
+  }
+  return res.json({ message: 'Parameter order saved', count: seq });
 }
 
 // POST /api/masters/parameters/:parameterId/ranges  - add one age/gender-specific
@@ -520,6 +555,6 @@ async function commitUpload(req, res) {
 }
 
 module.exports = {
-  createTest, listTests, updateTest, addParameter, assignParameter, addNormalRange, deleteNormalRange,
+  createTest, listTests, updateTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup,
 };

@@ -56,6 +56,7 @@ async function start() {
   // sync() above never alters an already-existing table, so a column added to a model after the
   // table was first created has to be added out-of-band here — idempotent, safe to run every boot.
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS method VARCHAR(255)');
+  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS sequence INTEGER');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS "remarksBig" BOOLEAN NOT NULL DEFAULT false');
   await sequelize.query("ALTER TABLE patient ADD COLUMN IF NOT EXISTS \"ageUnit\" VARCHAR(255) DEFAULT 'Years'");

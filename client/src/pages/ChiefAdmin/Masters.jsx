@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
+import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import { downloadFile } from '../../utils/download';
 
@@ -377,10 +378,11 @@ export default function Masters() {
                 </div>
               </div>
               <table>
-                <thead><tr><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th></th></tr></thead>
+                <thead><tr><th>Order</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th></th></tr></thead>
                 <tbody>
-                  {(selectedTest.ParameterMasters || []).map((p) => (
+                  {(selectedTest.ParameterMasters || []).map((p, i, all) => (
                     <tr key={p.id}>
+                      <td><ParamOrder apiBase="/admin/masters" testId={selectedTest.id} params={all} index={i} onSaved={load} /></td>
                       <td>{p.parameterCode || '—'}</td>
                       <td>
                         {p.parameterName}
@@ -400,7 +402,7 @@ export default function Masters() {
                       </td>
                     </tr>
                   ))}
-                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={5}>No parameters yet for this test.</td></tr>}
+                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={6}>No parameters yet for this test.</td></tr>}
                 </tbody>
               </table>
             </>

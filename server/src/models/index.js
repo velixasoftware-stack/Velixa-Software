@@ -273,6 +273,9 @@ const ParameterMaster = sequelize.define('ParameterMaster', {
   // apply, and the report prints it as its own block below the test's
   // normal parameter table instead of as a Value/Unit/Range row.
   isInterpretation: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  // Display order within its test (1, 2, 3 ...) - result entry and the
+  // printed report list parameters in this order. Null = after numbered ones.
+  sequence: { type: DataTypes.INTEGER },
   ...AUDIT_FIELDS,
 }, { tableName: 'parameter_master' });
 

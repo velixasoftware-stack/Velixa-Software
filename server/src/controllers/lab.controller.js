@@ -6,6 +6,7 @@ const {
 const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
+const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 
 // A client doing result entry sees every universal parameter plus whatever
 // parameters it added for itself for that test - never another client's own.
@@ -73,7 +74,7 @@ async function withResolvedRanges(sampleJson) {
     const owned = testMaster.ParameterMasters || [];
     const ownedIds = new Set(owned.map((p) => p.id));
     const assigned = (testMaster.AssignedParameters || []).filter((p) => !ownedIds.has(p.id));
-    testMaster.ParameterMasters = [...owned, ...assigned];
+    testMaster.ParameterMasters = sortParameters([...owned, ...assigned]);
     delete testMaster.AssignedParameters;
   }
 
@@ -288,7 +289,7 @@ async function getBillReport(req, res) {
   return res.json({
     doctor,
     bill: {
-      id: bill.id, billNo: bill.billNo, createdAt: bill.createdAt,
+      id: bill.id, billNo: bill.billNo, createdAt: bill.createdAt, walkInDate: bill.walkInDate,
       referredDoctor: bill.ReferralDoctor?.name || null,
       payor: bill.Payor?.name || null,
     },
@@ -313,7 +314,7 @@ async function getBillReport(req, res) {
       releasedAt: s.Report.releasedAt,
       remarks: s.remarks || null,
       remarksBig: s.remarksBig,
-      parameters: s.Results.filter(hasValue).map((r) => {
+      parameters: sortResultsByParameter(s.Results.filter(hasValue)).map((r) => {
         const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
         return {
           parameterCode: r.ParameterMaster.parameterCode,
@@ -361,7 +362,7 @@ async function shareReport(req, res) {
 
   const lines = samples.map((s) => {
     const testLine = `${s.BillItem.TestMaster.testName}:`;
-    const paramLines = s.Results.filter(hasValue).map((r) => {
+    const paramLines = sortResultsByParameter(s.Results.filter(hasValue)).map((r) => {
       if (r.ParameterMaster.isInterpretation) {
         return `  ${r.ParameterMaster.parameterName}: ${r.value}`;
       }
@@ -571,7 +572,7 @@ async function getBillTrendReport(req, res) {
 
   const parameters = [];
   for (const sample of samples) {
-    for (const result of sample.Results) {
+    for (const result of sortResultsByParameter([...sample.Results])) {
       const param = result.ParameterMaster;
       if (param.isInterpretation) continue; // a trend/sparkline over free text is meaningless
       if (!hasValue(result)) continue; // left blank at entry - nothing to trend

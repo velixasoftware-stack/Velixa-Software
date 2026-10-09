@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
+import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import SearchSelect from '../../components/SearchSelect';
 import { downloadFile } from '../../utils/download';
@@ -287,10 +288,11 @@ export default function TestParameters() {
                 <button type="button" onClick={openAddParameter}>+ Add Parameter</button>
               </div>
               <table>
-                <thead><tr><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th>Source</th><th></th></tr></thead>
+                <thead><tr><th>Order</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th>Source</th><th></th></tr></thead>
                 <tbody>
-                  {(selectedTest.ParameterMasters || []).map((p) => (
+                  {(selectedTest.ParameterMasters || []).map((p, i, all) => (
                     <tr key={p.id}>
+                      <td><ParamOrder apiBase="/test-config" testId={selectedTest.id} params={all} index={i} onSaved={loadAll} /></td>
                       <td>{p.parameterCode || '—'}</td>
                       <td>
                         {p.parameterName}
@@ -311,7 +313,7 @@ export default function TestParameters() {
                       </td>
                     </tr>
                   ))}
-                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={6}>No parameters yet for this test.</td></tr>}
+                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={7}>No parameters yet for this test.</td></tr>}
                 </tbody>
               </table>
             </>

@@ -17,6 +17,7 @@ router.use(authenticate, requireActiveSubscription, requireRole(ROLES.MANAGER, R
 router.get('/tests', testCtrl.listTests);
 router.post('/tests/:testId/parameters', testCtrl.addParameter);
 router.post('/tests/:testId/parameters/:parameterId/assign', testCtrl.assignParameter);
+router.put('/tests/:testId/parameter-order', testCtrl.reorderParameters);
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
 
