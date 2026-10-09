@@ -37,7 +37,7 @@ export default function Announcements() {
   );
 
   return (
-    <div className={`ticker ${tone}`} role="marquee" aria-label="Announcements">
+    <div className={`ticker no-print ${tone}`} role="marquee" aria-label="Announcements">
       <span className="ticker-label">📢 Updates</span>
       <div className="ticker-viewport">
         {/* Two identical runs back to back make the loop seamless. */}

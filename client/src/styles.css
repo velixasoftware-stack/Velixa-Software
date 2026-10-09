@@ -1014,7 +1014,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .icon-btn:hover { background: #e2e8f0; }
 
 @media print {
-  .sidebar, .sidebar-overlay, .hamburger-btn, .topbar, .no-print { display: none !important; }
+  .sidebar, .sidebar-overlay, .hamburger-btn, .topbar, .ticker, .no-print { display: none !important; }
   .main-content { padding: 0 !important; }
   .app-shell { display: block !important; }
   .report-sheet { box-shadow: none; max-width: 100%; }
