@@ -435,18 +435,15 @@ export default function FrontDesk() {
       <div className="card">
         <h3 className="step-heading">2. Payment</h3>
 
-        <div className="review-box">
-          <div className="review-box-row"><span>Patient</span><span>{patient?.name || patientForm.name || '—'}</span></div>
-          <div className="review-box-row"><span>Items</span><span>{selectedPrices.length} item(s)</span></div>
-          {taxAmount > 0 && (
-            <>
-              <div className="review-box-row"><span>Taxable Amount</span><span>₹{taxableAmount}</span></div>
-              <div className="review-box-row"><span>CGST ({(Number(gstPercent) || 0) / 2}%)</span><span>₹{cgstAmount}</span></div>
-              <div className="review-box-row"><span>SGST ({(Number(gstPercent) || 0) / 2}%)</span><span>₹{sgstAmount}</span></div>
-            </>
-          )}
-          <div className="review-box-row"><span>Net Payable</span><span>₹{netPayable}</span></div>
-        </div>
+        {/* Patient / items / net payable are already shown above (Net Payable tile) -
+            only the GST split is shown here, and only when the bill carries GST. */}
+        {taxAmount > 0 && (
+          <div className="review-box">
+            <div className="review-box-row"><span>Taxable Amount</span><span>₹{taxableAmount}</span></div>
+            <div className="review-box-row"><span>CGST ({(Number(gstPercent) || 0) / 2}%)</span><span>₹{cgstAmount}</span></div>
+            <div className="review-box-row"><span>SGST ({(Number(gstPercent) || 0) / 2}%)</span><span>₹{sgstAmount}</span></div>
+          </div>
+        )}
 
         {isCredit && (
           <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 0, marginBottom: 14 }}>
