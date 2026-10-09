@@ -329,12 +329,8 @@ async function listClients(req, res) {
     labRevenueCollected: billStats.reduce((sum, r) => sum + Number(r.revenueCollected), 0),
     paymentsCollected: paymentStats.reduce((sum, r) => sum + Number(r.paymentsCollected), 0),
   };
-  // Platform monthly revenue totals are not shown to MARKETING-only users.
-  if (marketingOnly) {
-    summary.monthlyRevenueBooked = null;
-    summary.monthlyRevenueCollected = null;
-    summary.paymentsCollected = null;
-  }
+  // For a MARKETING-only user every figure above - counts and revenue - is
+  // already limited to the clients assigned to them.
 
   const data = clients.map((c) => ({
     id: c.id,

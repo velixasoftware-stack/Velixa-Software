@@ -31,8 +31,8 @@ function dateRangeWhereOn(column, from, to) {
  * - a client onboarded outside the range can still have in-range payments
  * counted, since collections don't stop just because acquisition did.
  */
-// onlySalesPerson: a MARKETING-only user's username - limits the report to
-// their own clients and leaves out the total monthly revenue figures.
+// onlySalesPerson: a MARKETING-only user's username - limits the report
+// (counts and revenue) to their own clients.
 async function buildSalesReportData(from, to, onlySalesPerson = null) {
   const mine = (sp) => !onlySalesPerson || (sp || '').toLowerCase() === onlySalesPerson.toLowerCase();
   const marketingRole = await Role.findOne({ where: { name: 'MARKETING' } });
@@ -120,12 +120,9 @@ async function buildSalesReportData(from, to, onlySalesPerson = null) {
     summaryMap.get(salesPerson).paymentsCollected += Number(p.amount);
   }
 
-  const summary = [...summaryMap.values()];
-  if (onlySalesPerson) {
-    for (const s of summary) delete s.totalMonthlyRevenue;
-    for (const d of details) delete d.monthlyAmount;
-  }
-  return { summary, details, hideRevenue: !!onlySalesPerson };
+  // For a MARKETING user the report already covers only their own clients, so
+  // the revenue shown is just their own - nothing platform-wide is exposed.
+  return { summary: [...summaryMap.values()], details, hideRevenue: false };
 }
 
 // GET /api/chief-admin-users/sales-report?from=&to=

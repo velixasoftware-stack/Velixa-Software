@@ -136,10 +136,13 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/announcements"><Icon name="sparkle" size={17} /><span>Login Captions</span></NavLink>
             </div>
           )}
-          {/* MARKETING: only their own clients (Dashboard) and Sales Dashboard - no Team / Reset Passwords. */}
+          {/* MARKETING: their own clients only - create clients (auto-assigned to them),
+              tickets from their clients, Sales Dashboard. No Team / Reset Passwords. */}
           {!isAdmin && isMarketing && (
             <div className="nav-group nav-group-administration">
               <div className="nav-group-label">Sales</div>
+              <NavLink to="/chief-admin/clients/new"><Icon name="building" size={17} /><span>Create Client</span></NavLink>
+              <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>
               <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
             </div>
           )}

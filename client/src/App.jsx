@@ -46,11 +46,11 @@ export default function App() {
         element={<ProtectedRoute type="CHIEF_ADMIN"><ChiefAdminLayout /></ProtectedRoute>}
       >
         <Route index element={<ChiefAdminDashboard />} />
-        <Route path="clients/new" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientCreate /></ProtectedRoute>} />
+        <Route path="clients/new" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ClientCreate /></ProtectedRoute>} />
         <Route path="clients/:id" element={<ClientDetail />} />
         <Route path="masters" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminMasters /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminUsers /></ProtectedRoute>} />
-        <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminTickets /></ProtectedRoute>} />
+        <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ChiefAdminTickets /></ProtectedRoute>} />
         <Route path="integrations" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Integrations /></ProtectedRoute>} />
         <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><SalesDashboard /></ProtectedRoute>} />
         <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><TeamPasswordReset /></ProtectedRoute>} />

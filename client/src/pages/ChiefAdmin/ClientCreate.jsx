@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import RoleCheckboxes from '../../components/RoleCheckboxes';
 import SearchSelect from '../../components/SearchSelect';
 import { calculatePlanAmount, BASE_USER_COUNT, BASE_MONTHLY_AMOUNT, EXTRA_USER_AMOUNT } from '../../utils/pricing';
@@ -14,6 +15,9 @@ function todayISO() {
 }
 
 export default function ClientCreate() {
+  const { auth } = useAuth();
+  // A MARKETING user (no ADMIN role) always creates clients assigned to themselves.
+  const marketingSelf = !(auth?.user?.roles || []).includes('ADMIN') ? auth?.user?.username : null;
   const [form, setForm] = useState({
     clientName: '', mobile: '', email: '', address: '', salesPerson: '', marketingPersonPrice: '0',
     startDate: todayISO(), endDate: '', qrPaymentRequired: true, isFreeTrial: false,
@@ -144,14 +148,20 @@ export default function ClientCreate() {
           <label><span>Mobile</span><input value={form.mobile} onChange={(e) => update('mobile', e.target.value)} /></label>
           <label><span>Email</span><input value={form.email} onChange={(e) => update('email', e.target.value)} /></label>
           <label><span>Address</span><input value={form.address} onChange={(e) => update('address', e.target.value)} /></label>
-          <div><span>Sales Person</span>
-            <SearchSelect
-              options={marketingPersons.map((m) => ({ value: m.username, label: `${m.name || m.username} (${m.username})` }))}
-              value={form.salesPerson}
-              onChange={(v) => update('salesPerson', v)}
-              placeholder="Search marketing person…"
-            />
-          </div>
+          {marketingSelf ? (
+            <label><span>Sales Person</span>
+              <input value={marketingSelf} disabled title="Clients you create are assigned to you" />
+            </label>
+          ) : (
+            <div><span>Sales Person</span>
+              <SearchSelect
+                options={marketingPersons.map((m) => ({ value: m.username, label: `${m.name || m.username} (${m.username})` }))}
+                value={form.salesPerson}
+                onChange={(v) => update('salesPerson', v)}
+                placeholder="Search marketing person…"
+              />
+            </div>
+          )}
           <label><span>Marketing Person Price (₹/month)</span>
             <input type="number" min={0} value={form.marketingPersonPrice} onChange={(e) => update('marketingPersonPrice', e.target.value)} />
           </label>
