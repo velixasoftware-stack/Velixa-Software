@@ -4,6 +4,7 @@ const { Client, ClientSubscription, ClientUser, Role, ChiefAdmin, Bill, ClientPa
 const { Op, fn, col } = require('sequelize');
 const { calculatePlanAmount } = require('../utils/pricing');
 const { signToken } = require('../utils/jwt');
+const { isMarketingOnly } = require('../middleware/auth.middleware');
 
 /**
  * Generates the next available Client Code, e.g. SG0001 (self-signup) or
@@ -138,6 +139,8 @@ async function createClient(req, res) {
   }
 
   const clientCode = await generateClientCode('CHIEF_ADMIN');
+  // A client a MARKETING user onboards is always assigned to that user.
+  const assignedSalesPerson = isMarketingOnly(req) ? req.user.username : salesPerson;
 
   const userList = Array.isArray(users) ? users : [];
   const seenUsernames = new Set();
@@ -176,7 +179,7 @@ async function createClient(req, res) {
   try {
     const result = await sequelize.transaction(async (t) => {
       const client = await Client.create({
-        clientCode, clientName, mobile, email, address, salesPerson,
+        clientCode, clientName, mobile, email, address, salesPerson: assignedSalesPerson,
         marketingPersonPrice: marketingFee, monthlyAmount,
         // A free trial's initial cycle is already PAID (see createInitialSubscription
         // below) - reflect that immediately instead of showing PENDING until the next
@@ -272,6 +275,9 @@ function dateRangeWhereOn(column, from, to) {
 async function listClients(req, res) {
   const { status, from, to } = req.query;
   const where = status ? { paymentStatus: status } : {};
+  // A MARKETING-only user sees just the clients assigned to them.
+  const marketingOnly = isMarketingOnly(req);
+  if (marketingOnly) where.salesPerson = { [Op.iLike]: req.user.username };
   const clients = await Client.findAll({
     where,
     include: [{ model: ClientUser, attributes: ['id'], where: { isSystemUser: false }, required: false }],
@@ -287,8 +293,9 @@ async function listClients(req, res) {
   // patients), distinct from monthlyRevenue* above which is the SaaS
   // subscription fee they pay us. Filtered by the bill's own date when a
   // range is given.
+  const clientIdFilter = marketingOnly ? { clientId: clients.map((c) => c.id) } : {};
   const billStats = await Bill.findAll({
-    where: dateRangeWhereOn('createdAt', from, to),
+    where: { ...dateRangeWhereOn('createdAt', from, to), ...clientIdFilter },
     attributes: ['clientId', [fn('COUNT', col('id')), 'billCount'], [fn('COALESCE', fn('SUM', col('paidAmount')), 0), 'revenueCollected']],
     group: ['clientId'],
     raw: true,
@@ -301,7 +308,7 @@ async function listClients(req, res) {
   // genuinely means for "payments", unlike monthlyRevenueCollected below
   // which reflects the client's current status, not a historical window.
   const paymentStats = await ClientPayment.findAll({
-    where: { status: 'PAID', ...dateRangeWhereOn('paymentDate', from, to) },
+    where: { status: 'PAID', ...dateRangeWhereOn('paymentDate', from, to), ...clientIdFilter },
     attributes: ['clientId', [fn('COALESCE', fn('SUM', col('amount')), 0), 'paymentsCollected']],
     group: ['clientId'],
     raw: true,
@@ -322,6 +329,12 @@ async function listClients(req, res) {
     labRevenueCollected: billStats.reduce((sum, r) => sum + Number(r.revenueCollected), 0),
     paymentsCollected: paymentStats.reduce((sum, r) => sum + Number(r.paymentsCollected), 0),
   };
+  // Platform monthly revenue totals are not shown to MARKETING-only users.
+  if (marketingOnly) {
+    summary.monthlyRevenueBooked = null;
+    summary.monthlyRevenueCollected = null;
+    summary.paymentsCollected = null;
+  }
 
   const data = clients.map((c) => ({
     id: c.id,

@@ -135,10 +135,11 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/announcements"><Icon name="sparkle" size={17} /><span>Login Captions</span></NavLink>
             </div>
           )}
-          {!isAdmin && isMarketing && <div className="nav-group-label">Administration</div>}
-          {(isAdmin || isMarketing) && (
+          {/* MARKETING: only their own clients (Dashboard) and Sales Dashboard - no Team / Reset Passwords. */}
+          {!isAdmin && isMarketing && (
             <div className="nav-group nav-group-administration">
-              <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>
+              <div className="nav-group-label">Sales</div>
+              <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
             </div>
           )}
           <div className="nav-group-label">Account</div>

@@ -69,4 +69,14 @@ function requireChiefAdminRole(...allowedRoles) {
   };
 }
 
-module.exports = { authenticate, requireChiefAdmin, requireChiefAdminRole };
+/**
+ * A Chief-Admin-side MARKETING user without the ADMIN role: sees only the
+ * clients assigned to them (Client.salesPerson = their username), can't change
+ * existing clients, and never sees platform-wide revenue totals.
+ */
+function isMarketingOnly(req) {
+  const roles = req.user?.roles || [];
+  return req.user?.type === 'CHIEF_ADMIN' && roles.includes('MARKETING') && !roles.includes('ADMIN');
+}
+
+module.exports = { authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly };

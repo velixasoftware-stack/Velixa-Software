@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const { Op } = require('sequelize');
 const { Client, ChiefAdmin, Role, ClientPayment } = require('../models');
+const { isMarketingOnly } = require('../middleware/auth.middleware');
 
 // Filters by `column` falling within [from, to] (either end optional, `to`
 // inclusive of its whole calendar day) - silently no-ops on missing/invalid
@@ -30,7 +31,10 @@ function dateRangeWhereOn(column, from, to) {
  * - a client onboarded outside the range can still have in-range payments
  * counted, since collections don't stop just because acquisition did.
  */
-async function buildSalesReportData(from, to) {
+// onlySalesPerson: a MARKETING-only user's username - limits the report to
+// their own clients and leaves out the total monthly revenue figures.
+async function buildSalesReportData(from, to, onlySalesPerson = null) {
+  const mine = (sp) => !onlySalesPerson || (sp || '').toLowerCase() === onlySalesPerson.toLowerCase();
   const marketingRole = await Role.findOne({ where: { name: 'MARKETING' } });
   const marketingUsers = marketingRole
     ? await ChiefAdmin.findAll({
@@ -40,6 +44,7 @@ async function buildSalesReportData(from, to) {
 
   const summaryMap = new Map();
   for (const u of marketingUsers) {
+    if (!mine(u.username)) continue;
     summaryMap.set(u.username, {
       salesPerson: u.username,
       name: u.name || u.username,
@@ -60,7 +65,7 @@ async function buildSalesReportData(from, to) {
   const details = [];
 
   for (const c of clients) {
-    if (!c.salesPerson) continue;
+    if (!c.salesPerson || !mine(c.salesPerson)) continue;
     if (!summaryMap.has(c.salesPerson)) {
       summaryMap.set(c.salesPerson, {
         salesPerson: c.salesPerson,
@@ -105,7 +110,7 @@ async function buildSalesReportData(from, to) {
   });
   for (const p of payments) {
     const salesPerson = p.Client?.salesPerson;
-    if (!salesPerson) continue;
+    if (!salesPerson || !mine(salesPerson)) continue;
     if (!summaryMap.has(salesPerson)) {
       summaryMap.set(salesPerson, {
         salesPerson, name: salesPerson, clientCount: 0, totalMonthlyRevenue: 0,
@@ -115,26 +120,31 @@ async function buildSalesReportData(from, to) {
     summaryMap.get(salesPerson).paymentsCollected += Number(p.amount);
   }
 
-  return { summary: [...summaryMap.values()], details };
+  const summary = [...summaryMap.values()];
+  if (onlySalesPerson) {
+    for (const s of summary) delete s.totalMonthlyRevenue;
+    for (const d of details) delete d.monthlyAmount;
+  }
+  return { summary, details, hideRevenue: !!onlySalesPerson };
 }
 
 // GET /api/chief-admin-users/sales-report?from=&to=
 async function getSalesReport(req, res) {
   const { from, to } = req.query;
-  const data = await buildSalesReportData(from, to);
+  const data = await buildSalesReportData(from, to, isMarketingOnly(req) ? req.user.username : null);
   return res.json(data);
 }
 
 // GET /api/chief-admin-users/sales-report/export?from=&to=
 async function exportSalesReport(req, res) {
   const { from, to } = req.query;
-  const { summary, details } = await buildSalesReportData(from, to);
+  const { summary, details, hideRevenue } = await buildSalesReportData(from, to, isMarketingOnly(req) ? req.user.username : null);
 
   const summaryRows = summary.map((s) => ({
     'Sales Person': s.name,
     Username: s.salesPerson,
     'Clients Onboarded': s.clientCount,
-    'Total Monthly Revenue': s.totalMonthlyRevenue,
+    ...(hideRevenue ? {} : { 'Total Monthly Revenue': s.totalMonthlyRevenue }),
     'Total Marketing Person Price': s.totalMarketingPersonPrice,
     'Payments Collected': s.paymentsCollected,
     Paid: s.paid,
@@ -146,7 +156,7 @@ async function exportSalesReport(req, res) {
     'Client Code': d.clientCode,
     'Client Name': d.clientName,
     'Marketing Person Price': d.marketingPersonPrice,
-    'Monthly Amount': d.monthlyAmount,
+    ...(hideRevenue ? {} : { 'Monthly Amount': d.monthlyAmount }),
     'Payment Status': d.paymentStatus,
     Active: d.active ? 'Yes' : 'No',
     'Created On': new Date(d.createdAt).toISOString().slice(0, 10),

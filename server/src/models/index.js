@@ -69,6 +69,9 @@ const ClientRoleScreen = sequelize.define('ClientRoleScreen', {
   clientId: { type: DataTypes.INTEGER, allowNull: false },
   role: { type: DataTypes.STRING, allowNull: false },
   screens: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  // Extra screens Chief Admin granted this client's role beyond the platform
+  // default - the client's own ADMIN may then switch these on/off too.
+  grantedScreens: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
   ...AUDIT_FIELDS,
 }, {
   tableName: 'client_role_screen',

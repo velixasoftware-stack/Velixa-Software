@@ -1365,3 +1365,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .param-seq input.error { border-color: #ef4444; }
 .remove-param-btn { background: #fee2e2 !important; color: #b91c1c !important; border-color: #fecaca !important; font-size: 16px; font-weight: 700; line-height: 1; }
 .remove-param-btn:hover { background: #fecaca !important; }
+
+/* Role -> Screen Access grids */
+.rs-cell { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.rs-default-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #14b8a6; vertical-align: middle; }
+
+/* Chief Admin client page opened by a MARKETING user - view only */
+.readonly-fieldset { border: none; padding: 0; margin: 0; min-width: 0; }
+.readonly-fieldset:disabled button { display: none; }
+.readonly-banner { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; margin: 0 0 10px; }

@@ -10,7 +10,11 @@ import { useAuth } from '../../context/AuthContext';
 export default function ClientDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { impersonateClient } = useAuth();
+  const { auth, impersonateClient } = useAuth();
+  // A MARKETING user (no ADMIN role) can open their assigned clients but not
+  // change anything - the page renders view-only and skips ADMIN-only data.
+  const isAdmin = (auth?.user?.roles || []).includes('ADMIN');
+  const readOnly = !isAdmin;
   const [loginAsBusy, setLoginAsBusy] = useState(false);
   const [client, setClient] = useState(null);
   const [form, setForm] = useState(null);
@@ -53,11 +57,11 @@ export default function ClientDetail() {
   async function load() {
     const [clientRes, testsRes, pricesRes, marketingRes, roleScreensRes, revenueRes] = await Promise.all([
       api.get(`/clients/${id}`),
-      api.get('/admin/masters/tests'),
+      isAdmin ? api.get('/admin/masters/tests') : Promise.resolve({ data: [] }),
       api.get(`/clients/${id}/test-prices`),
       api.get('/clients/marketing-persons'),
-      api.get(`/clients/${id}/role-screens`),
-      api.get(`/clients/${id}/revenue`),
+      isAdmin ? api.get(`/clients/${id}/role-screens`) : Promise.resolve({ data: { roles: [], defaults: {}, effective: {} } }),
+      isAdmin ? api.get(`/clients/${id}/revenue`) : Promise.resolve({ data: null }),
     ]);
     setMarketingPersons(marketingRes.data);
     setRoleScreenRoles(roleScreensRes.data.roles);
@@ -241,21 +245,20 @@ export default function ClientDetail() {
     }
   }
 
-  function toggleRoleScreen(role, key) {
-    setRoleScreenEffective((d) => {
-      const current = d[role] || [];
-      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-      return { ...d, [role]: next };
-    });
-  }
-
-  async function handleSaveRoleScreens(role) {
+  // Each tick/untick saves straight away - there is no separate Save button
+  // to forget. On failure the box flips back.
+  async function toggleRoleScreen(role, key) {
+    const before = roleScreenEffective[role] || [];
+    const next = before.includes(key) ? before.filter((k) => k !== key) : [...before, key];
+    setRoleScreenEffective((d) => ({ ...d, [role]: next }));
     setRoleScreenError('');
     setRoleScreenMessage('');
     try {
-      await api.put(`/clients/${id}/role-screens`, { role, screens: roleScreenEffective[role] || [] });
-      setRoleScreenMessage(`Screen access for ${role} saved.`);
+      await api.put(`/clients/${id}/role-screens`, { role, screens: next });
+      const label = SCREEN_CATALOG.find((s) => s.key === key)?.label || key;
+      setRoleScreenMessage(`Saved - ${label} ${next.includes(key) ? 'enabled' : 'removed'} for ${role}.`);
     } catch (err) {
+      setRoleScreenEffective((d) => ({ ...d, [role]: before }));
       setRoleScreenError(err.response?.data?.message || 'Failed to save');
     }
   }
@@ -279,13 +282,19 @@ export default function ClientDetail() {
   return (
     <div>
       <p><Link to="/chief-admin">&larr; Back to Dashboard</Link></p>
+      {readOnly && (
+        <p className="readonly-banner">View only - this client is assigned to you. Only an Admin can change client details, users, prices or access.</p>
+      )}
+      <fieldset disabled={readOnly} className="readonly-fieldset">
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <h3 style={{ margin: 0 }}>Edit Client — {client.clientCode}</h3>
-          <button type="button" onClick={handleLoginAsClient} disabled={loginAsBusy}>
-            {loginAsBusy ? 'Opening…' : 'Log In as This Client'}
-          </button>
+          <h3 style={{ margin: 0 }}>{readOnly ? 'Client' : 'Edit Client'} — {client.clientCode}</h3>
+          {isAdmin && (
+            <button type="button" onClick={handleLoginAsClient} disabled={loginAsBusy}>
+              {loginAsBusy ? 'Opening…' : 'Log In as This Client'}
+            </button>
+          )}
         </div>
         <form onSubmit={handleSaveClient} className="form-grid" style={{ alignItems: 'end' }}>
           <label><span>Client Name</span><input value={form.clientName} onChange={(e) => setForm((f) => ({ ...f, clientName: e.target.value }))} required /></label>
@@ -356,6 +365,7 @@ export default function ClientDetail() {
           </tbody>
         </table>
 
+        {isAdmin && (<>
         <h4 style={{ marginTop: 18 }}>Record a Direct Payment</h4>
         <p style={{ fontSize: 13, color: '#64748b' }}>
           For a client that paid you directly (cash, bank transfer, etc.) instead of through the in-app QR/online
@@ -399,6 +409,7 @@ export default function ClientDetail() {
         </form>
         {freeDaysMessage && <p style={{ color: '#166534' }}>{freeDaysMessage}</p>}
         {freeDaysError && <p className="error-text">{freeDaysError}</p>}
+        </>)}
       </div>
 
       {revenue && (
@@ -499,13 +510,13 @@ export default function ClientDetail() {
         </table>
       </div>
 
+      {isAdmin && (
       <div className="card">
         <h3>Role → Screen Access</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
-          Which screens this client's own FRONT_OFFICE / LAB_USER / MANAGER / MASTER_MANAGER staff can see. This can
-          only narrow the platform-wide default (set on Role Screen Defaults) - greyed-out screens aren't part of the
-          platform default for that role. The client's own ADMIN can narrow this further themselves later; ADMIN
-          itself always has full access and isn't listed.
+          Which screens this client's FRONT_OFFICE / LAB_USER / MANAGER / MASTER_MANAGER staff can see. Tick or untick
+          any screen - it saves straight away. Screens marked <span className="rs-default-dot" /> are in the platform default
+          for that role. The client's own ADMIN always has full access and isn't listed.
         </p>
         {roleScreenError && <p className="error-text">{roleScreenError}</p>}
         {roleScreenMessage && <p style={{ color: '#166534' }}>{roleScreenMessage}</p>}
@@ -514,7 +525,6 @@ export default function ClientDetail() {
             <tr>
               <th>Role</th>
               {SCREEN_CATALOG.map((s) => <th key={s.key}>{s.label}</th>)}
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -522,27 +532,28 @@ export default function ClientDetail() {
               <tr key={role}>
                 <td><strong>{role}</strong></td>
                 {SCREEN_CATALOG.map((s) => {
-                  const allowed = (roleScreenDefaults[role] || []).includes(s.key);
+                  const inDefault = (roleScreenDefaults[role] || []).includes(s.key);
                   return (
                     <td key={s.key}>
-                      <input
-                        type="checkbox"
-                        style={{ width: 'auto' }}
-                        disabled={!allowed}
-                        checked={allowed && (roleScreenEffective[role] || []).includes(s.key)}
-                        onChange={() => toggleRoleScreen(role, s.key)}
-                        title={allowed ? '' : 'Not included in the platform default for this role'}
-                      />
+                      <label className="rs-cell" title={inDefault ? 'Part of the platform default for this role' : 'Extra screen granted to this client'}>
+                        <input
+                          type="checkbox"
+                          style={{ width: 'auto' }}
+                          checked={(roleScreenEffective[role] || []).includes(s.key)}
+                          onChange={() => toggleRoleScreen(role, s.key)}
+                        />
+                        {inDefault && <span className="rs-default-dot" />}
+                      </label>
                     </td>
                   );
                 })}
-                <td><button type="button" onClick={() => handleSaveRoleScreens(role)}>Save</button></td>
               </tr>
             ))}
-            {roleScreenRoles.length === 0 && <tr><td colSpan={SCREEN_CATALOG.length + 2}>Loading…</td></tr>}
+            {roleScreenRoles.length === 0 && <tr><td colSpan={SCREEN_CATALOG.length + 1}>Loading…</td></tr>}
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="card">
         <h3>Client-wise Test Pricing</h3>
@@ -566,6 +577,7 @@ export default function ClientDetail() {
           </tbody>
         </table>
       </div>
+      </fieldset>
     </div>
   );
 }

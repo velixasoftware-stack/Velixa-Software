@@ -14,16 +14,28 @@ async function getOverrideMap(clientId) {
   return Object.fromEntries(rows.map((r) => [r.role, r.screens]));
 }
 
+// Screens Chief Admin granted each role of this client beyond the platform default.
+async function getGrantMap(clientId) {
+  const rows = await ClientRoleScreen.findAll({ where: { clientId } });
+  return Object.fromEntries(rows.map((r) => [r.role, r.grantedScreens || []]));
+}
+
+// What a role of this client may be given: the platform default plus anything
+// Chief Admin granted on top.
+function allowedFor(role, defaults, grants) {
+  return [...new Set([...(defaults[role] || []), ...((grants || {})[role] || [])])];
+}
+
 /**
  * Combines a client's saved override with the current platform default,
  * always intersecting against the default - so if Chief Admin later tightens
  * the default after a client saved a wider override, the client's effective
  * access shrinks immediately too, without needing them to resave anything.
  */
-function computeEffective(defaults, overrides) {
+function computeEffective(defaults, overrides, grants = {}) {
   const effective = {};
   for (const role of CONFIGURABLE_ROLES) {
-    const allowed = defaults[role] || [];
+    const allowed = allowedFor(role, defaults, grants);
     const chosen = overrides[role] ?? allowed;
     effective[role] = chosen.filter((s) => allowed.includes(s));
   }
@@ -54,9 +66,11 @@ async function updateRoleScreenDefault(req, res) {
 // GET /api/role-screens  (Client ADMIN - their own client, scoped via JWT)
 async function getClientRoleScreens(req, res) {
   const clientId = req.user.clientId;
-  const [defaults, overrides] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId)]);
-  const effective = computeEffective(defaults, overrides);
-  return res.json({ roles: CONFIGURABLE_ROLES, screens: ALL_SCREEN_KEYS, defaults, effective });
+  const [defaults, overrides, grants] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId), getGrantMap(clientId)]);
+  const effective = computeEffective(defaults, overrides, grants);
+  // "defaults" here = what this client may switch on (platform default + Chief Admin grants).
+  const available = Object.fromEntries(CONFIGURABLE_ROLES.map((r) => [r, allowedFor(r, defaults, grants)]));
+  return res.json({ roles: CONFIGURABLE_ROLES, screens: ALL_SCREEN_KEYS, defaults: available, effective });
 }
 
 // PUT /api/role-screens  { role, screens: [...] }
@@ -68,8 +82,8 @@ async function updateClientRoleScreens(req, res) {
     return res.status(400).json({ message: 'Unknown or non-configurable role' });
   }
   const screenList = Array.isArray(screens) ? screens : [];
-  const defaults = await getDefaultsMap();
-  const allowed = new Set(defaults[role] || []);
+  const [defaults, grants] = await Promise.all([getDefaultsMap(), getGrantMap(clientId)]);
+  const allowed = new Set(allowedFor(role, defaults, grants));
   const invalid = screenList.filter((s) => !allowed.has(s));
   if (invalid.length) {
     return res.status(400).json({ message: `Your platform plan does not allow enabling: ${invalid.join(', ')}` });
@@ -83,17 +97,19 @@ async function updateClientRoleScreens(req, res) {
 // GET /api/role-screens/effective  (any authenticated Client User - builds their own nav)
 async function getEffectiveRoleScreens(req, res) {
   const clientId = req.user.clientId;
-  const [defaults, overrides] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId)]);
-  return res.json(computeEffective(defaults, overrides));
+  const [defaults, overrides, grants] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId), getGrantMap(clientId)]);
+  return res.json(computeEffective(defaults, overrides, grants));
 }
 
 // GET /api/clients/:clientId/role-screens  (Chief Admin, ADMIN only - same override
 // a client's own ADMIN sets via /role-screens, but settable by Chief Admin for any client).
 async function getClientRoleScreensForAdmin(req, res) {
   const clientId = Number(req.params.clientId);
-  const [defaults, overrides] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId)]);
-  const effective = computeEffective(defaults, overrides);
-  return res.json({ roles: CONFIGURABLE_ROLES, screens: ALL_SCREEN_KEYS, defaults, effective });
+  const [defaults, overrides, grants] = await Promise.all([getDefaultsMap(), getOverrideMap(clientId), getGrantMap(clientId)]);
+  const effective = computeEffective(defaults, overrides, grants);
+  // Chief Admin may switch on ANY screen for this client - "defaults" stays the
+  // platform baseline (shown for reference), "all" lists every screen.
+  return res.json({ roles: CONFIGURABLE_ROLES, screens: ALL_SCREEN_KEYS, defaults, effective, canGrantAny: true });
 }
 
 // PUT /api/clients/:clientId/role-screens  { role, screens: [...] }
@@ -103,16 +119,15 @@ async function updateClientRoleScreensForAdmin(req, res) {
   if (!CONFIGURABLE_ROLES.includes(role)) {
     return res.status(400).json({ message: 'Unknown or non-configurable role' });
   }
-  const screenList = Array.isArray(screens) ? screens : [];
-  const defaults = await getDefaultsMap();
-  const allowed = new Set(defaults[role] || []);
-  const invalid = screenList.filter((s) => !allowed.has(s));
-  if (invalid.length) {
-    return res.status(400).json({ message: `Not part of the platform default for this role: ${invalid.join(', ')}` });
-  }
+  const screenList = Array.isArray(screens) ? [...new Set(screens)] : [];
+  const invalid = screenList.filter((s) => !ALL_SCREEN_KEYS.includes(s));
+  if (invalid.length) return res.status(400).json({ message: `Unknown screen(s): ${invalid.join(', ')}` });
 
-  const [row] = await ClientRoleScreen.findOrCreate({ where: { clientId, role }, defaults: { screens: screenList } });
-  if (JSON.stringify(row.screens) !== JSON.stringify(screenList)) await row.update({ screens: screenList });
+  // Anything beyond the platform default becomes a grant for this client's role.
+  const defaults = await getDefaultsMap();
+  const granted = screenList.filter((s) => !(defaults[role] || []).includes(s));
+  const [row] = await ClientRoleScreen.findOrCreate({ where: { clientId, role }, defaults: { screens: screenList, grantedScreens: granted } });
+  await row.update({ screens: screenList, grantedScreens: granted });
   return res.json({ role, screens: screenList });
 }
 

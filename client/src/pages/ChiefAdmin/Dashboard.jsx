@@ -84,9 +84,14 @@ export default function Dashboard() {
 
       <p className="dash-section-label">Revenue</p>
       <div className="dash-stat-grid">
-        <StatCard icon="invoice" color="teal" value={`₹${summary.monthlyRevenueCollected || 0}`} label="Collected this cycle" />
-        <StatCard icon="invoice" color="purple" value={`₹${summary.monthlyRevenueBooked || 0}`} label="Booked this cycle" />
-        <StatCard icon="percent" color="indigo" value={`₹${summary.paymentsCollected || 0}`} label={`Payments Collected${dateFiltered ? ' (range)' : ''}`} />
+        {/* Subscription revenue totals - not sent to MARKETING users (null), so not shown. */}
+        {summary.monthlyRevenueBooked !== null && (
+          <>
+            <StatCard icon="invoice" color="teal" value={`₹${summary.monthlyRevenueCollected || 0}`} label="Collected this cycle" />
+            <StatCard icon="invoice" color="purple" value={`₹${summary.monthlyRevenueBooked || 0}`} label="Booked this cycle" />
+            <StatCard icon="percent" color="indigo" value={`₹${summary.paymentsCollected || 0}`} label={`Payments Collected${dateFiltered ? ' (range)' : ''}`} />
+          </>
+        )}
         <StatCard icon="reports" color="blue" value={summary.labBillCount || 0} label={`Lab Bills${dateFiltered ? ' (range)' : ' (all time)'}`} />
         <StatCard icon="lab" color="teal" value={`₹${summary.labRevenueCollected || 0}`} label={`Lab Revenue${dateFiltered ? ' (range)' : ' (all time)'}`} />
       </div>

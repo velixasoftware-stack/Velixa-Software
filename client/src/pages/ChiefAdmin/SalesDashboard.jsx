@@ -6,6 +6,8 @@ import { Icon } from '../../components/Icons';
 export default function SalesDashboard() {
   const [summary, setSummary] = useState([]);
   const [details, setDetails] = useState([]);
+  // true for a MARKETING user: the server leaves out monthly revenue figures.
+  const [hideRevenue, setHideRevenue] = useState(false);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -14,6 +16,7 @@ export default function SalesDashboard() {
     api.get('/chief-admin-users/sales-report', { params: { from: fromDate || undefined, to: toDate || undefined } }).then((r) => {
       setSummary(r.data.summary);
       setDetails(r.data.details);
+      setHideRevenue(!!r.data.hideRevenue);
     });
   }, [fromDate, toDate]);
 
@@ -27,7 +30,7 @@ export default function SalesDashboard() {
 
   const totals = summary.reduce((acc, s) => ({
     clientCount: acc.clientCount + s.clientCount,
-    totalMonthlyRevenue: acc.totalMonthlyRevenue + s.totalMonthlyRevenue,
+    totalMonthlyRevenue: acc.totalMonthlyRevenue + (s.totalMonthlyRevenue || 0),
     totalMarketingPersonPrice: acc.totalMarketingPersonPrice + (s.totalMarketingPersonPrice || 0),
     paymentsCollected: acc.paymentsCollected + (s.paymentsCollected || 0),
   }), { clientCount: 0, totalMonthlyRevenue: 0, totalMarketingPersonPrice: 0, paymentsCollected: 0 });
@@ -73,7 +76,7 @@ export default function SalesDashboard() {
       <div className="stat-row">
         <div className="stat-tile"><div className="value">{summary.length}</div><div className="label">Marketing Persons</div></div>
         <div className="stat-tile"><div className="value">{totals.clientCount}</div><div className="label">Clients Onboarded{dateFiltered ? ' (range)' : ''}</div></div>
-        <div className="stat-tile"><div className="value">₹{totals.totalMonthlyRevenue}</div><div className="label">Total Monthly Revenue</div></div>
+        {!hideRevenue && <div className="stat-tile"><div className="value">₹{totals.totalMonthlyRevenue}</div><div className="label">Total Monthly Revenue</div></div>}
         <div className="stat-tile"><div className="value">₹{totals.totalMarketingPersonPrice}</div><div className="label">Total Marketing Person Price</div></div>
         <div className="stat-tile"><div className="value">₹{totals.paymentsCollected}</div><div className="label">Payments Collected{dateFiltered ? ' (range)' : ''}</div></div>
       </div>
@@ -83,7 +86,7 @@ export default function SalesDashboard() {
         <table>
           <thead>
             <tr>
-              <th>Sales Person</th><th>Clients Onboarded</th><th>Marketing Person Price</th><th>Total Monthly Revenue</th>
+              <th>Sales Person</th><th>Clients Onboarded</th><th>Marketing Person Price</th>{!hideRevenue && <th>Total Monthly Revenue</th>}
               <th>Payments Collected</th><th>Paid</th><th>Pending</th><th>Expired</th>
             </tr>
           </thead>
@@ -93,7 +96,7 @@ export default function SalesDashboard() {
                 <td>{s.name} <span style={{ color: '#94a3b8', fontSize: 12 }}>({s.salesPerson})</span></td>
                 <td>{s.clientCount}</td>
                 <td>₹{s.totalMarketingPersonPrice}</td>
-                <td>₹{s.totalMonthlyRevenue}</td>
+                {!hideRevenue && <td>₹{s.totalMonthlyRevenue}</td>}
                 <td>₹{s.paymentsCollected}</td>
                 <td><span className="badge PAID">{s.paid}</span></td>
                 <td><span className="badge PENDING">{s.pending}</span></td>
@@ -112,7 +115,7 @@ export default function SalesDashboard() {
         </div>
         <table>
           <thead>
-            <tr><th>Sales Person</th><th>Client Code</th><th>Client Name</th><th>Marketing Person Price</th><th>Monthly Amount</th><th>Status</th><th>Created On</th></tr>
+            <tr><th>Sales Person</th><th>Client Code</th><th>Client Name</th><th>Marketing Person Price</th>{!hideRevenue && <th>Monthly Amount</th>}<th>Status</th><th>Created On</th></tr>
           </thead>
           <tbody>
             {filteredDetails.map((d) => (
@@ -121,7 +124,7 @@ export default function SalesDashboard() {
                 <td>{d.clientCode}</td>
                 <td>{d.clientName}</td>
                 <td>₹{d.marketingPersonPrice}</td>
-                <td>₹{d.monthlyAmount}</td>
+                {!hideRevenue && <td>₹{d.monthlyAmount}</td>}
                 <td><span className={`badge ${d.paymentStatus}`}>{d.paymentStatus}</span></td>
                 <td>{new Date(d.createdAt).toLocaleDateString()}</td>
               </tr>

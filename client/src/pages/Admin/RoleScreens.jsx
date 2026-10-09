@@ -17,21 +17,19 @@ export default function RoleScreens() {
   }
   useEffect(() => { load(); }, []);
 
-  function toggle(role, key) {
-    setEffective((d) => {
-      const current = d[role] || [];
-      const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-      return { ...d, [role]: next };
-    });
-  }
-
-  async function handleSave(role) {
+  // Each tick/untick saves straight away; on failure the box flips back.
+  async function toggle(role, key) {
+    const before = effective[role] || [];
+    const next = before.includes(key) ? before.filter((k) => k !== key) : [...before, key];
+    setEffective((d) => ({ ...d, [role]: next }));
     setError('');
     setMessage('');
     try {
-      await api.put('/role-screens', { role, screens: effective[role] || [] });
-      setMessage(`Screen access for ${role} saved.`);
+      await api.put('/role-screens', { role, screens: next });
+      const label = SCREEN_CATALOG.find((s) => s.key === key)?.label || key;
+      setMessage(`Saved - ${label} ${next.includes(key) ? 'enabled' : 'removed'} for ${role}.`);
     } catch (err) {
+      setEffective((d) => ({ ...d, [role]: before }));
       setError(err.response?.data?.message || 'Failed to save');
     }
   }
@@ -42,8 +40,8 @@ export default function RoleScreens() {
         <h3>Staff Screen Access</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
           Choose which screens your own FRONT_OFFICE / LAB_USER / MANAGER / MASTER_MANAGER staff can see.
-          You can only turn off a screen your platform plan already allows for that role — greyed-out screens
-          aren't part of your plan for that role. The ADMIN role always has full access.
+          Tick or untick a screen - it saves straight away. Greyed-out screens aren't part of your plan for that
+          role (ask Chief Admin to enable them). The ADMIN role always has full access.
         </p>
         {error && <p className="error-text">{error}</p>}
         {message && <p style={{ color: '#166534' }}>{message}</p>}
@@ -53,7 +51,6 @@ export default function RoleScreens() {
             <tr>
               <th>Role</th>
               {SCREEN_CATALOG.map((s) => <th key={s.key}>{s.label}</th>)}
-              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -75,10 +72,9 @@ export default function RoleScreens() {
                     </td>
                   );
                 })}
-                <td><button type="button" onClick={() => handleSave(role)}>Save</button></td>
               </tr>
             ))}
-            {roles.length === 0 && <tr><td colSpan={SCREEN_CATALOG.length + 2}>Loading…</td></tr>}
+            {roles.length === 0 && <tr><td colSpan={SCREEN_CATALOG.length + 1}>Loading…</td></tr>}
           </tbody>
         </table>
       </div>
