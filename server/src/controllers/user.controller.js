@@ -18,7 +18,8 @@ async function resolveRoles(roleNames) {
 // Body: { username, password, name, email, mobile, department, designation, roleNames: ['FRONT_OFFICE', 'LAB_USER'] }
 async function createUser(req, res) {
   const { clientId } = req.params;
-  const { username, password, name, email, mobile, department, designation, roleNames } = req.body;
+  const { password, name, email, mobile, department, designation, roleNames } = req.body;
+  const username = (req.body.username || '').toString().trim();
   const roleList = Array.isArray(roleNames) ? roleNames : (req.body.roleName ? [req.body.roleName] : []);
 
   if (!username || !password || roleList.length === 0) {

@@ -33,6 +33,24 @@ async function generateClientCode(source) {
   return code;
 }
 
+// Username of the support login auto-created on every client (see createClient).
+const SYSTEM_USERNAME = 'chiefadmin';
+
+// Turns a raw Sequelize unique/validation failure (whose message is just
+// "Validation error") into something a person can act on.
+function friendlyDbError(err) {
+  if (err?.name === 'SequelizeUniqueConstraintError') {
+    const fields = Object.keys(err.fields || {});
+    if (fields.includes('username')) return `Username "${err.fields.username}" already exists for this client - please choose another.`;
+    if (fields.includes('clientCode')) return 'That client code was just taken - please submit again.';
+    return `Duplicate value for ${fields.join(', ') || 'a unique field'} - please check and try again.`;
+  }
+  if (err?.name === 'SequelizeValidationError') {
+    return (err.errors || []).map((e) => e.message).join('; ') || err.message;
+  }
+  return err?.message;
+}
+
 // When set, every client's Chief Admin support login shares this ONE
 // password, so Chief Admin doesn't have to look up or remember a different
 // one per client to use the Client Login tab as "chiefadmin" ("Log In as
@@ -122,12 +140,24 @@ async function createClient(req, res) {
   const clientCode = await generateClientCode('CHIEF_ADMIN');
 
   const userList = Array.isArray(users) ? users : [];
+  const seenUsernames = new Set();
   for (const u of userList) {
     const roleNames = Array.isArray(u.roleNames) ? u.roleNames : (u.roleName ? [u.roleName] : []);
     u.roleNames = roleNames;
+    u.username = (u.username || '').toString().trim();
     if (!u.username || !u.password || roleNames.length === 0) {
       return res.status(400).json({ message: 'Each user needs a username, password and at least one role' });
     }
+    // Checked up front - both would otherwise hit the (clientId, username)
+    // unique index mid-transaction and surface only as "Validation error".
+    const key = u.username.toLowerCase();
+    if (key === SYSTEM_USERNAME) {
+      return res.status(400).json({ message: `"${u.username}" is reserved for the Chief Admin support login - please use another username (e.g. admin).` });
+    }
+    if (seenUsernames.has(key)) {
+      return res.status(400).json({ message: `Username "${u.username}" is entered more than once - each user needs a different username.` });
+    }
+    seenUsernames.add(key);
   }
 
   const marketingFee = Number(marketingPersonPrice) || 0;
@@ -199,7 +229,7 @@ async function createClient(req, res) {
 
     return res.status(201).json(result);
   } catch (err) {
-    return res.status(400).json({ message: err.message || 'Failed to create client' });
+    return res.status(400).json({ message: friendlyDbError(err) || 'Failed to create client' });
   }
 }
 

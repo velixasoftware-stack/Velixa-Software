@@ -64,8 +64,10 @@ export default function ClientCreate() {
       setError('End Date cannot be before Start Date');
       return;
     }
+    const seen = new Set();
     for (const u of userRows) {
-      if (!u.username || !u.password) {
+      const name = (u.username || '').trim();
+      if (!name || !u.password) {
         setError('Every user needs a username and password');
         return;
       }
@@ -73,6 +75,16 @@ export default function ClientCreate() {
         setError('Every user needs at least one role');
         return;
       }
+      // "chiefadmin" is created automatically as this client's support login.
+      if (name.toLowerCase() === 'chiefadmin') {
+        setError(`"${name}" is reserved for the Chief Admin support login - please use another username (e.g. admin).`);
+        return;
+      }
+      if (seen.has(name.toLowerCase())) {
+        setError(`Username "${name}" is entered more than once - each user needs a different username.`);
+        return;
+      }
+      seen.add(name.toLowerCase());
     }
 
     setLoading(true);
