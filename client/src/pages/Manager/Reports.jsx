@@ -224,20 +224,22 @@ export default function Reports() {
       </div>
 
       <div className="card">
-        <h3>Lab Details (Samples)</h3>
-        <table>
-          <thead><tr><th>Barcode</th><th>Test Code</th><th>Test Name</th><th>Sample Status</th><th>Report Status</th><th>Collected At</th></tr></thead>
-          <tbody>
-            {labDetails.map((d) => (
-              <tr key={d.barcode}>
-                <td>{d.barcode}</td><td>{d.testCode}</td><td>{d.testName}</td>
-                <td>{d.status}</td><td>{d.reportStatus || '—'}</td>
-                <td>{d.collectedAt ? new Date(d.collectedAt).toLocaleString() : '—'}</td>
-              </tr>
-            ))}
-            {labDetails.length === 0 && <tr><td colSpan={6}>No samples.</td></tr>}
-          </tbody>
-        </table>
+        <h3>Lab Details (Samples) <span className="lab-detail-count">{labDetails.length}</span></h3>
+        {/* One card per sample, its details listed top to bottom. */}
+        <div className="lab-detail-grid">
+          {labDetails.map((d) => (
+            <div key={d.barcode} className={`lab-detail-card ${STATUS_TONE[d.status] || 'slate'}`}>
+              <div className="ldc-test">{d.testName}<span className="ldc-code">{d.testCode}</span></div>
+              <dl>
+                <dt>Barcode</dt><dd className="mono">{d.barcode}</dd>
+                <dt>Sample Status</dt><dd><span className={`status-pill ${d.status}`}><i className="dot" />{STATUS_LABEL[d.status] || d.status}</span></dd>
+                <dt>Report Status</dt><dd>{d.reportStatus || '—'}</dd>
+                <dt>Collected At</dt><dd>{d.collectedAt ? new Date(d.collectedAt).toLocaleString('en-IN') : '—'}</dd>
+              </dl>
+            </div>
+          ))}
+          {labDetails.length === 0 && <p className="cell-sub">No samples.</p>}
+        </div>
       </div>
     </div>
   );

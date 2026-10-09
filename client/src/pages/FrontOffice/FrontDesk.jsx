@@ -196,6 +196,9 @@ export default function FrontDesk() {
         payload.patientId = patient.id;
       } else {
         if (!patientForm.name) throw { response: { data: { message: 'Patient name is required' } } };
+        if (patientForm.age === '' || patientForm.age == null || Number.isNaN(Number(patientForm.age)) || Number(patientForm.age) < 0) {
+          throw { response: { data: { message: 'Patient age is required' } } };
+        }
         Object.assign(payload, patientForm, { age: patientForm.age ? Number(patientForm.age) : null });
       }
 
@@ -334,9 +337,9 @@ export default function FrontDesk() {
               <option>Male</option><option>Female</option><option>Other</option>
             </select>
           </label>
-          <label><span>Age</span>
+          <label><span>Age *</span>
             <div style={{ display: 'flex', gap: 6 }}>
-              <input type="number" min="0" style={{ flex: 1 }} value={patientForm.age} onChange={(e) => setPatientForm((f) => ({ ...f, age: e.target.value }))} disabled={!!patient} />
+              <input type="number" min="0" required={!patient} style={{ flex: 1 }} value={patientForm.age} onChange={(e) => setPatientForm((f) => ({ ...f, age: e.target.value }))} disabled={!!patient} />
               <select style={{ flex: 1 }} value={patientForm.ageUnit} onChange={(e) => setPatientForm((f) => ({ ...f, ageUnit: e.target.value }))} disabled={!!patient}>
                 <option>Years</option><option>Months</option><option>Days</option>
               </select>

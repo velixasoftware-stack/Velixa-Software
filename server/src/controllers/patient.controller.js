@@ -34,6 +34,9 @@ async function findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, 
     if (byMobile) return byMobile;
   }
   if (!name) throw new Error('Patient name is required to register a new patient');
+  if (age === undefined || age === null || age === '' || Number.isNaN(Number(age)) || Number(age) < 0) {
+    throw new Error('Patient age is required to register a new patient');
+  }
 
   // Two new patients registered at the same moment for one client can both
   // compute the same next UMR - the (clientId, umr) unique index rejects the
