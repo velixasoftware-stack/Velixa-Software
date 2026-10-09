@@ -1,35 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../api/client';
 
 /**
- * "Order" cell for a test's parameter table: its position number plus ▲/▼ to
- * move it. Saves the whole new order to `${apiBase}/tests/:testId/parameter-order`
- * - result entry and the printed report list parameters in this order.
+ * "Seq" cell for a test's parameter table: type the parameter's sequence
+ * number (1, 2, 3 ...) - saved on Enter or when leaving the box. Result entry
+ * and the printed report list parameters in this order.
  */
-export default function ParamOrder({ apiBase, testId, params, index, onSaved }) {
+export default function ParamOrder({ apiBase, testId, param, onSaved }) {
+  const current = param.sequence ?? '';
+  const [value, setValue] = useState(String(current));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  async function move(dir) {
-    const to = index + dir;
-    if (to < 0 || to >= params.length || saving) return;
-    const ids = params.map((p) => p.id);
-    [ids[index], ids[to]] = [ids[to], ids[index]];
+  useEffect(() => { setValue(String(param.sequence ?? '')); }, [param.sequence]);
+
+  async function save() {
+    const next = value.trim();
+    if (next === String(current) || saving) return;
     setSaving(true);
+    setError('');
     try {
-      await api.put(`${apiBase}/tests/${testId}/parameter-order`, { parameterIds: ids });
+      await api.put(`${apiBase}/tests/${testId}/parameters/${param.id}/sequence`, { sequence: next === '' ? null : Number(next) });
       await onSaved?.();
     } catch (err) {
-      window.alert(err.response?.data?.message || 'Could not save the parameter order');
+      setError(err.response?.data?.message || 'Could not save');
+      setValue(String(current));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="param-order">
-      <span className="param-order-no">{index + 1}</span>
-      <button type="button" className="param-order-btn" title="Move up" disabled={index === 0 || saving} onClick={() => move(-1)}>▲</button>
-      <button type="button" className="param-order-btn" title="Move down" disabled={index === params.length - 1 || saving} onClick={() => move(1)}>▼</button>
+    <div className="param-seq">
+      <input
+        type="number"
+        min="1"
+        max="999"
+        inputMode="numeric"
+        value={value}
+        placeholder="–"
+        disabled={saving}
+        title={error || 'Sequence no. - order on result entry and the report (Enter to save)'}
+        className={error ? 'error' : ''}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      />
     </div>
   );
 }

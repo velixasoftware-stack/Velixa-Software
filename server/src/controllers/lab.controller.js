@@ -15,7 +15,7 @@ const { sortParameters, sortResultsByParameter } = require('../utils/parameterOr
 // ParameterMasters by withResolvedRanges below, so result entry shows them
 // exactly like the test's own parameters.
 function buildSampleIncludes(clientId) {
-  const paramWhere = { [Op.or]: [{ clientId: null }, { clientId }] };
+  const paramWhere = { active: true, [Op.or]: [{ clientId: null }, { clientId }] };
   return [
     {
       model: BillItem,
@@ -520,7 +520,7 @@ async function getPreviousResults(req, res) {
     where: { billId: bill.id },
     include: [{ model: TestMaster, include: [ParameterMaster] }],
   });
-  const parameterIds = [...new Set(items.flatMap((i) => (i.TestMaster?.ParameterMasters || [])
+  const parameterIds = [...new Set(items.flatMap((i) => (i.TestMaster?.ParameterMasters || []).filter((p) => p.active !== false)
     .filter((p) => !p.isInterpretation).map((p) => p.id)))];
   if (parameterIds.length === 0) return res.json({});
 

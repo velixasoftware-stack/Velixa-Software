@@ -1361,3 +1361,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .param-order-btn { width: 22px; height: 22px; padding: 0; font-size: 9px; line-height: 1; border-radius: 5px; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
 .param-order-btn:hover:not(:disabled) { background: #e0e7ff; }
 .param-order-btn:disabled { background: #f8fafc; color: #cbd5e1; border-color: #e2e8f0; }
+.param-seq input { width: 54px; height: 26px; padding: 2px 6px; text-align: center; font-weight: 700; font-size: 12.5px; }
+.param-seq input.error { border-color: #ef4444; }
+.remove-param-btn { background: #fee2e2 !important; color: #b91c1c !important; border-color: #fecaca !important; font-size: 16px; font-weight: 700; line-height: 1; }
+.remove-param-btn:hover { background: #fecaca !important; }

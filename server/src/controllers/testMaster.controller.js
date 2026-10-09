@@ -98,7 +98,7 @@ async function createTest(req, res) {
 // nothing else in the app needs to know about the distinction.
 async function listTests(req, res) {
   const clientId = requesterClientId(req);
-  const paramWhere = clientId ? { [Op.or]: [{ clientId: null }, { clientId }] } : { clientId: null };
+  const paramWhere = clientId ? { active: true, [Op.or]: [{ clientId: null }, { clientId }] } : { active: true, clientId: null };
 
   const tests = await TestMaster.findAll({
     include: [
@@ -172,6 +172,17 @@ async function addParameter(req, res) {
     where: { testId: test.id, clientId, parameterName: { [Op.iLike]: parameterName } },
     include: [ParameterNormalRange],
   });
+  if (existing && existing.active === false) {
+    // Re-adding a parameter that was removed earlier brings the same one back
+    // (its history and ranges intact) instead of creating a duplicate.
+    const seqGiven = req.body.sequence !== undefined && req.body.sequence !== '' && req.body.sequence !== null;
+    const maxSeq = seqGiven ? null : await ParameterMaster.max('sequence', { where: { testId: test.id, active: true } });
+    await existing.update({
+      active: true, unit: unit ?? existing.unit, method: method ?? existing.method,
+      sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
+    });
+    return res.status(200).json(existing);
+  }
   if (existing) return res.status(200).json(existing);
 
   const parameterCode = await generateParameterCode();
@@ -261,6 +272,56 @@ async function reorderParameters(req, res) {
   return res.json({ message: 'Parameter order saved', count: seq });
 }
 
+// Loads a parameter that belongs to (or is assigned to) a test, or explains why not.
+async function findTestParameter(req) {
+  const test = await TestMaster.findByPk(req.params.testId);
+  if (!test) return { status: 404, message: 'Test not found' };
+  const parameter = await ParameterMaster.findByPk(req.params.parameterId);
+  if (!parameter) return { status: 404, message: 'Parameter not found' };
+  const owned = parameter.testId === test.id;
+  const linked = owned ? false : await test.hasAssignedParameter(parameter);
+  if (!owned && !linked) return { status: 404, message: 'That parameter is not on this test' };
+  return { test, parameter, owned };
+}
+
+// PUT /api/.../tests/:testId/parameters/:parameterId/sequence   Body: { sequence }
+// Sets the parameter's display number (1, 2, 3 ...) used by result entry and
+// the printed report. Blank clears it (the parameter then goes last).
+async function setParameterSequence(req, res) {
+  const found = await findTestParameter(req);
+  if (found.status) return res.status(found.status).json({ message: found.message });
+  const clientId = requesterClientId(req);
+  if (clientId && found.parameter.clientId && found.parameter.clientId !== clientId) {
+    return res.status(403).json({ message: 'You cannot change another client\'s parameter' });
+  }
+  const raw = req.body.sequence;
+  const sequence = raw === '' || raw === null || raw === undefined ? null : Number(raw);
+  if (sequence !== null && (!Number.isInteger(sequence) || sequence < 1 || sequence > 999)) {
+    return res.status(400).json({ message: 'Sequence must be a whole number from 1 to 999' });
+  }
+  await found.parameter.update({ sequence });
+  return res.json({ id: found.parameter.id, sequence });
+}
+
+// DELETE /api/.../tests/:testId/parameters/:parameterId
+// Removes a parameter from this test. A parameter only *assigned* here (shared
+// from another test) is simply unlinked. The test's own parameter is switched
+// off (active = false) rather than deleted, so results already entered or
+// released with it keep printing on old reports. A client can only remove its
+// own parameters - the standard ones are shared with every client.
+async function removeParameter(req, res) {
+  const found = await findTestParameter(req);
+  if (found.status) return res.status(found.status).json({ message: found.message });
+  const { test, parameter, owned } = found;
+  const clientId = requesterClientId(req);
+  if (clientId && parameter.clientId !== clientId) {
+    return res.status(403).json({ message: 'This is a standard parameter shared with all clients - ask Chief Admin to remove it. You can remove only parameters you added.' });
+  }
+  if (owned) await parameter.update({ active: false });
+  else await test.removeAssignedParameter(parameter);
+  return res.json({ message: owned ? 'Parameter removed from the test' : 'Parameter unlinked from this test' });
+}
+
 // POST /api/masters/parameters/:parameterId/ranges  - add one age/gender-specific
 // normal range rule to an existing parameter.
 async function addNormalRange(req, res) {
@@ -324,7 +385,7 @@ async function downloadTemplate(req, res) {
   // Chief-Admin-only endpoint - the export covers just the universal catalog,
   // never a client's own private parameters.
   const tests = await TestMaster.findAll({
-    include: [{ model: ParameterMaster, where: { clientId: null }, required: false, include: [ParameterNormalRange] }],
+    include: [{ model: ParameterMaster, where: { clientId: null, active: true }, required: false, include: [ParameterNormalRange] }],
     order: [['testCode', 'ASC']],
   });
 
@@ -418,7 +479,7 @@ async function previewUpload(req, res) {
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
   const existingTests = await TestMaster.findAll({
-    include: [{ model: ParameterMaster, where: { clientId: null }, required: false }],
+    include: [{ model: ParameterMaster, where: { clientId: null, active: true }, required: false }],
   });
   // Seeded from the database, then updated as rows are walked below - so a
   // brand-new test's first row (which introduces it) doesn't make every one
@@ -555,6 +616,6 @@ async function commitUpload(req, res) {
 }
 
 module.exports = {
-  createTest, listTests, updateTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters,
+  createTest, listTests, updateTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup,
 };

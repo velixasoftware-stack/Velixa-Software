@@ -57,6 +57,7 @@ async function start() {
   // table was first created has to be added out-of-band here — idempotent, safe to run every boot.
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS method VARCHAR(255)');
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS sequence INTEGER');
+  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS "remarksBig" BOOLEAN NOT NULL DEFAULT false');
   await sequelize.query("ALTER TABLE patient ADD COLUMN IF NOT EXISTS \"ageUnit\" VARCHAR(255) DEFAULT 'Years'");

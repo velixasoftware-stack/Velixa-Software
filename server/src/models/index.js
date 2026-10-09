@@ -276,6 +276,9 @@ const ParameterMaster = sequelize.define('ParameterMaster', {
   // Display order within its test (1, 2, 3 ...) - result entry and the
   // printed report list parameters in this order. Null = after numbered ones.
   sequence: { type: DataTypes.INTEGER },
+  // false = removed from its test(s): hidden from result entry and the masters
+  // lists, but kept so already-entered/released results still print.
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   ...AUDIT_FIELDS,
 }, { tableName: 'parameter_master' });
 

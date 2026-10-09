@@ -9,7 +9,7 @@ const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
 const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '' });
 const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', interpretation: '' });
-const blankParamForm = () => ({ parameterName: '', unit: '', method: '', isInterpretation: false });
+const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false });
 // Narrower than the app-wide .form-grid default (minmax 200px) so Gender/Age/Unit/Range fields
 // wrap two-three to a row instead of stacking one-per-row on a narrow/mobile screen.
 const rangeGridStyle = { alignItems: 'end', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' };
@@ -314,6 +314,20 @@ export default function Masters() {
     load();
   }
 
+
+  // Removes a parameter from the selected test (switched off, or unlinked if
+  // it was shared in from another test) - results already released keep it.
+  async function removeParam(p) {
+    if (!window.confirm(`Remove "${p.parameterName}" from ${selectedTest.testName}?
+
+It will no longer appear on result entry. Reports already released keep their values.`)) return;
+    try {
+      await api.delete(`/admin/masters/tests/${selectedTest.id}/parameters/${p.id}`);
+      await load();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not remove the parameter');
+    }
+  }
   return (
     <div>
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -378,11 +392,11 @@ export default function Masters() {
                 </div>
               </div>
               <table>
-                <thead><tr><th>Order</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th></th></tr></thead>
+                <thead><tr><th>Seq</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th></th></tr></thead>
                 <tbody>
-                  {(selectedTest.ParameterMasters || []).map((p, i, all) => (
+                  {(selectedTest.ParameterMasters || []).map((p) => (
                     <tr key={p.id}>
-                      <td><ParamOrder apiBase="/admin/masters" testId={selectedTest.id} params={all} index={i} onSaved={load} /></td>
+                      <td><ParamOrder apiBase="/admin/masters" testId={selectedTest.id} param={p} onSaved={load} /></td>
                       <td>{p.parameterCode || '—'}</td>
                       <td>
                         {p.parameterName}
@@ -396,9 +410,16 @@ export default function Masters() {
                       <td>{p.unit || '—'}</td>
                       <td><RangeMatrix param={p} /></td>
                       <td>
-                        <button type="button" className="secondary icon-btn" title="Manage ranges" onClick={() => openManageRanges(p)}>
-                          <Icon name="edit" size={15} />
-                        </button>
+                        <div className="order-actions">
+                          <button type="button" className="secondary icon-btn" title="Manage ranges" onClick={() => openManageRanges(p)}>
+                            <Icon name="edit" size={15} />
+                          </button>
+                          {true && (
+                            <button type="button" className="icon-btn remove-param-btn" title="Remove this parameter from the test" onClick={() => removeParam(p)}>
+                              ×
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -527,6 +548,9 @@ export default function Masters() {
             <p style={{ fontSize: 13, fontWeight: 600, margin: '18px 0 2px' }}>Or create a brand-new parameter</p>
             <form onSubmit={handleAddParameter}>
               <div className="form-grid" style={{ alignItems: 'end' }}>
+                <label style={{ maxWidth: 120 }}><span>Sequence No</span>
+                  <input type="number" min="1" max="999" value={paramForm.sequence} onChange={(e) => setParamForm((f) => ({ ...f, sequence: e.target.value }))} placeholder="Auto" />
+                </label>
                 <label><span>Parameter Name</span>
                   <input value={paramForm.parameterName} onChange={(e) => setParamForm((f) => ({ ...f, parameterName: e.target.value }))} required />
                 </label>

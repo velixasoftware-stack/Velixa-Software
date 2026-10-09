@@ -18,6 +18,8 @@ router.get('/tests', testCtrl.listTests);
 router.post('/tests/:testId/parameters', testCtrl.addParameter);
 router.post('/tests/:testId/parameters/:parameterId/assign', testCtrl.assignParameter);
 router.put('/tests/:testId/parameter-order', testCtrl.reorderParameters);
+router.put('/tests/:testId/parameters/:parameterId/sequence', testCtrl.setParameterSequence);
+router.delete('/tests/:testId/parameters/:parameterId', testCtrl.removeParameter);
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
 
