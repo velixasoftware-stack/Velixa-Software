@@ -35,8 +35,17 @@ async function findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, 
   }
   if (!name) throw new Error('Patient name is required to register a new patient');
 
-  const newUmr = await generateUmr(clientId);
-  return Patient.create({ clientId, umr: newUmr, name, age, ageUnit: ageUnit || 'Years', gender, mobile, email, address });
+  // Two new patients registered at the same moment for one client can both
+  // compute the same next UMR - the (clientId, umr) unique index rejects the
+  // second, so just recompute and try again rather than failing the bill.
+  for (let attempt = 1; ; attempt += 1) {
+    const newUmr = await generateUmr(clientId);
+    try {
+      return await Patient.create({ clientId, umr: newUmr, name, age, ageUnit: ageUnit || 'Years', gender, mobile, email, address });
+    } catch (err) {
+      if (err?.name !== 'SequelizeUniqueConstraintError' || attempt >= 5) throw err;
+    }
+  }
 }
 
 // POST /api/patients

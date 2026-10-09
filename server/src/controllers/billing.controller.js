@@ -8,6 +8,31 @@ const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 
+/**
+ * Next bill number for a client: its Client Code + a running number kept
+ * separately per client, e.g. CLI0007-00001, CLI0007-00002 ... and DEMO001-00001
+ * for another client. Must run inside the bill's transaction: the per-client
+ * advisory lock makes two bills saved at the same moment wait for each other,
+ * so they can never be given the same number. Older "INV-<timestamp>" bills
+ * don't match the pattern and are simply ignored when counting.
+ */
+async function generateBillNo(clientId, transaction) {
+  await sequelize.query('SELECT pg_advisory_xact_lock(:key)', { replacements: { key: 900000000 + Number(clientId) }, transaction });
+  const client = await Client.findByPk(clientId, { attributes: ['clientCode'], transaction });
+  const prefix = `${client?.clientCode || `C${clientId}`}-`;
+  const rows = await Bill.findAll({
+    where: { clientId, billNo: { [Op.like]: `${prefix}%` } },
+    attributes: ['billNo'],
+    raw: true,
+    transaction,
+  });
+  const highest = rows.reduce((max, { billNo }) => {
+    const n = parseInt(billNo.slice(prefix.length), 10);
+    return Number.isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return `${prefix}${String(highest + 1).padStart(5, '0')}`;
+}
+
 function generateBarcode() {
   return `S${Date.now()}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 }
@@ -146,7 +171,7 @@ async function createBill(req, res) {
         clientId, patientId: patient.id, createdByUserId: userId,
         referredDoctorId: doctor?.id || null,
         payorId: payor?.id || null,
-        billNo: `INV-${Date.now()}`,
+        billNo: await generateBillNo(clientId, t),
         walkInDate: walkInDate || new Date().toISOString().slice(0, 10),
         visitType: visitType || 'WALK-IN',
         priority: priority || 'ROUTINE',
