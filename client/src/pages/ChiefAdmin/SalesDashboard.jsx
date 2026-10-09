@@ -6,7 +6,7 @@ import { Icon } from '../../components/Icons';
 export default function SalesDashboard() {
   const [summary, setSummary] = useState([]);
   const [details, setDetails] = useState([]);
-  // true for a MARKETING user: the server leaves out monthly revenue figures.
+  // true for a MARKETING user: Total Monthly Revenue is not shown to them.
   const [hideRevenue, setHideRevenue] = useState(false);
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -115,7 +115,7 @@ export default function SalesDashboard() {
         </div>
         <table>
           <thead>
-            <tr><th>Sales Person</th><th>Client Code</th><th>Client Name</th><th>Marketing Person Price</th>{!hideRevenue && <th>Monthly Amount</th>}<th>Status</th><th>Created On</th></tr>
+            <tr><th>Sales Person</th><th>Client Code</th><th>Client Name</th><th>Marketing Person Price</th><th>Monthly Amount</th><th>Status</th><th>Created On</th></tr>
           </thead>
           <tbody>
             {filteredDetails.map((d) => (
@@ -124,7 +124,7 @@ export default function SalesDashboard() {
                 <td>{d.clientCode}</td>
                 <td>{d.clientName}</td>
                 <td>₹{d.marketingPersonPrice}</td>
-                {!hideRevenue && <td>₹{d.monthlyAmount}</td>}
+                <td>₹{d.monthlyAmount}</td>
                 <td><span className={`badge ${d.paymentStatus}`}>{d.paymentStatus}</span></td>
                 <td>{new Date(d.createdAt).toLocaleDateString()}</td>
               </tr>

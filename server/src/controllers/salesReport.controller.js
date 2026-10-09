@@ -120,9 +120,11 @@ async function buildSalesReportData(from, to, onlySalesPerson = null) {
     summaryMap.get(salesPerson).paymentsCollected += Number(p.amount);
   }
 
-  // For a MARKETING user the report already covers only their own clients, so
-  // the revenue shown is just their own - nothing platform-wide is exposed.
-  return { summary: [...summaryMap.values()], details, hideRevenue: false };
+  // A MARKETING user's report covers only their own clients, and leaves out
+  // the Total Monthly Revenue figure (not shown to the MARKETING role).
+  const summary = [...summaryMap.values()];
+  if (onlySalesPerson) for (const s of summary) delete s.totalMonthlyRevenue;
+  return { summary, details, hideRevenue: !!onlySalesPerson };
 }
 
 // GET /api/chief-admin-users/sales-report?from=&to=
@@ -153,7 +155,7 @@ async function exportSalesReport(req, res) {
     'Client Code': d.clientCode,
     'Client Name': d.clientName,
     'Marketing Person Price': d.marketingPersonPrice,
-    ...(hideRevenue ? {} : { 'Monthly Amount': d.monthlyAmount }),
+    'Monthly Amount': d.monthlyAmount,
     'Payment Status': d.paymentStatus,
     Active: d.active ? 'Yes' : 'No',
     'Created On': new Date(d.createdAt).toISOString().slice(0, 10),
