@@ -3,6 +3,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { ClientUser, Role, Client } = require('../models');
 const { calculatePlanAmount } = require('../utils/pricing');
+const { isMarketingOnly } = require('../middleware/auth.middleware');
 
 const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
 
@@ -88,6 +89,22 @@ async function updateUser(req, res) {
   return res.json({ id: user.id, username: user.username });
 }
 
+// PUT /api/clients/:clientId/users/:userId/reset-password   Body: { password }
+// Password only - nothing else about the user changes. Open to MARKETING for
+// their assigned clients (checked by the route), but never for a client's
+// auto-created "chiefadmin" support login - only an ADMIN may reset that.
+async function resetUserPassword(req, res) {
+  const user = await ClientUser.findOne({ where: { id: req.params.userId, clientId: req.params.clientId } });
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  if (user.isSystemUser && isMarketingOnly(req)) {
+    return res.status(403).json({ message: 'The Chief Admin support login can only be reset by an Admin' });
+  }
+  const password = (req.body.password || '').toString();
+  if (password.length < 4) return res.status(400).json({ message: 'Password must be at least 4 characters' });
+  await user.update({ passwordHash: await bcrypt.hash(password, 10) });
+  return res.json({ id: user.id, username: user.username });
+}
+
 // POST /api/clients/:clientId/users/:userId/signature  (multipart: signature)
 async function uploadSignature(req, res) {
   const user = await ClientUser.findOne({ where: { id: req.params.userId, clientId: req.params.clientId } });
@@ -105,4 +122,4 @@ async function uploadSignature(req, res) {
   return res.json({ signaturePath });
 }
 
-module.exports = { createUser, listUsers, updateUser, uploadSignature };
+module.exports = { createUser, listUsers, updateUser, uploadSignature, resetUserPassword };

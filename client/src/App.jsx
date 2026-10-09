@@ -53,7 +53,7 @@ export default function App() {
         <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ChiefAdminTickets /></ProtectedRoute>} />
         <Route path="integrations" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Integrations /></ProtectedRoute>} />
         <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><SalesDashboard /></ProtectedRoute>} />
-        <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><TeamPasswordReset /></ProtectedRoute>} />
+        <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><TeamPasswordReset /></ProtectedRoute>} />
         <Route path="role-screen-defaults" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><RoleScreenDefaults /></ProtectedRoute>} />
         <Route path="announcements" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Announcements /></ProtectedRoute>} />
         <Route path="reset-password" element={<ProtectedRoute type="CHIEF_ADMIN"><ResetPassword /></ProtectedRoute>} />

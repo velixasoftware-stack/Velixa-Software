@@ -52,6 +52,8 @@ router.post('/:clientId/free-days', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMI
 router.post('/:clientId/users', requireAdminRole, userCtrl.createUser);
 router.get('/:clientId/users', assignedClientOnly, userCtrl.listUsers);
 router.put('/:clientId/users/:userId', requireAdminRole, userCtrl.updateUser);
+// Password-only reset: ADMIN, or MARKETING for their own assigned clients.
+router.put('/:clientId/users/:userId/reset-password', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING), assignedClientOnly, userCtrl.resetUserPassword);
 router.post('/:clientId/users/:userId/signature', requireAdminRole, upload.single('signature'), userCtrl.uploadSignature);
 
 router.get('/:clientId/test-prices', assignedClientOnly, priceCtrl.listPrices);

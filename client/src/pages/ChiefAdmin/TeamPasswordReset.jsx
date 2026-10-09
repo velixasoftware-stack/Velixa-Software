@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import SearchSelect from '../../components/SearchSelect';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TeamPasswordReset() {
+  const { auth } = useAuth();
+  // MARKETING (no ADMIN role): only users of their own assigned clients - not
+  // the Chief Admin team, and not each client's built-in chiefadmin support login.
+  const isAdmin = (auth?.user?.roles || []).includes('ADMIN');
   const [teamUsers, setTeamUsers] = useState([]);
   const [teamUserId, setTeamUserId] = useState('');
   const [teamPassword, setTeamPassword] = useState('');
@@ -18,7 +23,7 @@ export default function TeamPasswordReset() {
   const [clientError, setClientError] = useState('');
 
   useEffect(() => {
-    api.get('/chief-admin-users').then((r) => setTeamUsers(r.data));
+    if (isAdmin) api.get('/chief-admin-users').then((r) => setTeamUsers(r.data));
     api.get('/clients').then((r) => setClients(r.data.clients || []));
   }, []);
 
@@ -26,7 +31,7 @@ export default function TeamPasswordReset() {
     setClientUserId('');
     setClientUsers([]);
     if (!clientId) return;
-    api.get(`/clients/${clientId}/users`).then((r) => setClientUsers(r.data));
+    api.get(`/clients/${clientId}/users`).then((r) => setClientUsers(isAdmin ? r.data : r.data.filter((u) => !u.isSystemUser)));
   }, [clientId]);
 
   async function handleResetTeamPassword(e) {
@@ -56,7 +61,7 @@ export default function TeamPasswordReset() {
       return;
     }
     try {
-      await api.put(`/clients/${clientId}/users/${clientUserId}`, { password: clientPassword });
+      await api.put(`/clients/${clientId}/users/${clientUserId}/reset-password`, { password: clientPassword });
       const user = clientUsers.find((u) => String(u.id) === String(clientUserId));
       setClientMessage(`Password updated for ${user?.username}.`);
       setClientPassword('');
@@ -67,6 +72,7 @@ export default function TeamPasswordReset() {
 
   return (
     <div>
+      {isAdmin && (
       <div className="card">
         <h3>Reset Password — Chief Admin Team</h3>
         <form onSubmit={handleResetTeamPassword} className="form-grid" style={{ alignItems: 'end' }}>
@@ -86,12 +92,13 @@ export default function TeamPasswordReset() {
         {teamError && <p className="error-text">{teamError}</p>}
         {teamMessage && <p style={{ color: '#166534' }}>{teamMessage}</p>}
       </div>
+      )}
 
       <div className="card">
         <h3>Reset Password — Client Users</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
           Pick a client first — only that client's own users are shown, so passwords are always
-          reset against the right client code.
+          reset against the right client code.{!isAdmin && ' You can reset users of the clients assigned to you.'}
         </p>
         <form onSubmit={handleResetClientPassword} className="form-grid" style={{ alignItems: 'end' }}>
           <div><span>Client</span>
