@@ -82,9 +82,22 @@ function BarChart({ data, valueKey, labelKey }) {
   );
 }
 
+/** YYYY-MM-DD for a date in the browser's own (local) calendar. */
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Opens on the last 2 days (yesterday + today) rather than all-time.
+function defaultRange() {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  return { from: ymd(yesterday), to: ymd(today) };
+}
+
 export default function Reports() {
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(() => defaultRange().from);
+  const [toDate, setToDate] = useState(() => defaultRange().to);
+  const [breakdown, setBreakdown] = useState({ byMode: [], byUser: [] });
   const [collection, setCollection] = useState(null);
   const [outstanding, setOutstanding] = useState([]);
   const [labSummary, setLabSummary] = useState(null);
@@ -103,6 +116,7 @@ export default function Reports() {
     api.get('/reports/test-wise-revenue', { params: dateParams }).then((r) => setTestRevenue(r.data));
     api.get('/reports/report-status', { params: dateParams }).then((r) => setReportStatus(r.data));
     api.get('/reports/lab-details', { params: dateParams }).then((r) => setLabDetails(r.data));
+    api.get('/reports/payment-breakdown', { params: dateParams }).then((r) => setBreakdown(r.data));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromDate, toDate]);
 
@@ -145,8 +159,13 @@ export default function Reports() {
           <div className="df-field"><span>To</span>
             <input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
           </div>
+          {(fromDate !== defaultRange().from || toDate !== defaultRange().to) && (
+            <button type="button" className="dash-btn ghost" onClick={() => { const d = defaultRange(); setFromDate(d.from); setToDate(d.to); }}>
+              Last 2 days
+            </button>
+          )}
           {(fromDate || toDate) && (
-            <button type="button" className="dash-btn ghost" onClick={() => { setFromDate(''); setToDate(''); }}>Clear</button>
+            <button type="button" className="dash-btn ghost" onClick={() => { setFromDate(''); setToDate(''); }}>All dates</button>
           )}
           <button type="button" className="dash-btn excel" onClick={() => downloadFile(exportUrl(), 'reports-export.xlsx')}>
             ⬇ Export Excel
@@ -157,19 +176,72 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className="kpi-row">
+      <div className="kpi-row kpi-7">
         <Kpi tone="indigo" icon="orders" label="Bills" value={collection?.billCount ?? '—'} />
-        <Kpi tone="blue" icon="billing" label="Total Billed" value={inr(collection?.totalBilled)} />
+        <Kpi tone="blue" icon="billing" label="Gross Amount" value={inr(collection?.totalBilled)} hint="Before discount" />
+        {/* Bill.discount already includes any post-billing discount, so it is one tile, split in the hint. */}
+        <Kpi
+          tone="amber" icon="percent" label="Discount" value={inr(collection?.totalDiscount)}
+          hint={Number(collection?.totalPostDiscount) > 0 ? `incl. ${inr(collection.totalPostDiscount)} post-billing` : 'At billing'}
+        />
+        <Kpi
+          tone="sky" icon="invoice" label="Net Amount" value={inr(collection?.netAmount)}
+          hint={Number(collection?.totalTax) > 0 ? `incl. ${inr(collection.totalTax)} GST` : 'Gross − discount'}
+        />
         <Kpi
           tone="green" icon="invoice" label="Total Collected" value={inr(collection?.totalCollected)}
           hint={collectedPct != null ? `${collectedPct}% of billed` : null}
         />
         <Kpi tone="rose" icon="refund" label="Cancelled / Refunded" value={inr(collection?.totalRefunded)} />
-        <Kpi tone="amber" icon="percent" label="Post-Billing Discount" value={inr(collection?.totalPostDiscount)} />
         <Kpi
           tone={outstandingAmt > 0 ? 'orange' : 'teal'} icon="clock" label="Outstanding" value={inr(collection?.outstanding)}
           hint={outstandingAmt > 0 ? 'To be collected' : 'All settled'}
         />
+      </div>
+
+      <div className="report-split">
+        <div className="card">
+          <h3>Payment Mode-wise</h3>
+          <table>
+            <thead><tr><th>Payment Mode</th><th>Payments</th><th>Collected</th><th>Refunded / Paid Back</th><th>Net</th></tr></thead>
+            <tbody>
+              {breakdown.byMode.map((m) => (
+                <tr key={m.mode}>
+                  <td>{m.mode}</td><td>{m.payments}</td><td>{inr(m.collected)}</td><td>{inr(m.refunded)}</td><td><strong>{inr(m.net)}</strong></td>
+                </tr>
+              ))}
+              {breakdown.byMode.length === 0 && <tr><td colSpan={5}>No payments in this period.</td></tr>}
+            </tbody>
+            {breakdown.byMode.length > 1 && (
+              <tfoot>
+                <tr>
+                  <th>Total</th><th>{breakdown.byMode.reduce((s, m) => s + m.payments, 0)}</th>
+                  <th>{inr(breakdown.byMode.reduce((s, m) => s + m.collected, 0))}</th>
+                  <th>{inr(breakdown.byMode.reduce((s, m) => s + m.refunded, 0))}</th>
+                  <th>{inr(breakdown.byMode.reduce((s, m) => s + m.net, 0))}</th>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        <div className="card">
+          <h3>User-wise</h3>
+          <table>
+            <thead>
+              <tr><th>User</th><th>Bills</th><th>Gross</th><th>Discount</th><th>Net</th><th>Collected</th><th>Refunded</th><th>Outstanding</th></tr>
+            </thead>
+            <tbody>
+              {breakdown.byUser.map((u) => (
+                <tr key={u.user}>
+                  <td>{u.user}</td><td>{u.bills}</td><td>{inr(u.gross)}</td><td>{inr(u.discount)}</td>
+                  <td><strong>{inr(u.net)}</strong></td><td>{inr(u.collected)}</td><td>{inr(u.refunded)}</td><td>{inr(u.outstanding)}</td>
+                </tr>
+              ))}
+              {breakdown.byUser.length === 0 && <tr><td colSpan={8}>No bills in this period.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="card">
@@ -222,15 +294,15 @@ export default function Reports() {
       <div className="card">
         <h3>Outstanding Amounts</h3>
         <table>
-          <thead><tr><th>Bill No</th><th>Patient</th><th>Total</th><th>Paid</th><th>Refunded</th><th>Post-Billing Discount</th><th>Outstanding</th></tr></thead>
+          <thead><tr><th>Bill No</th><th>Patient</th><th>Total</th><th>Discount</th><th>Paid</th><th>Refunded</th><th>Post-Billing Discount</th><th>Outstanding</th></tr></thead>
           <tbody>
             {outstanding.map((o) => (
               <tr key={o.billNo}>
-                <td>{o.billNo}</td><td>{o.patient}</td><td>₹{o.totalAmount}</td><td>₹{o.paidAmount}</td>
+                <td>{o.billNo}</td><td>{o.patient}</td><td>₹{o.totalAmount}</td><td>₹{o.discount || 0}</td><td>₹{o.paidAmount}</td>
                 <td>₹{o.refundedAmount || 0}</td><td>₹{o.postDiscountAmount || 0}</td><td>₹{o.outstanding}</td>
               </tr>
             ))}
-            {outstanding.length === 0 && <tr><td colSpan={7}>No outstanding bills.</td></tr>}
+            {outstanding.length === 0 && <tr><td colSpan={8}>No outstanding bills.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 const XLSX = require('xlsx');
-const { Bill, BillItem, TestMaster, Sample, Report, Patient, Refund, BillDiscount, Result, ClientUser } = require('../models');
+const {
+  Bill, BillItem, TestMaster, Sample, Report, Patient, Refund, BillDiscount, DuePayment, Result, ClientUser,
+} = require('../models');
 
 /** Sum of everything refunded on a bill - already cancelled & paid back, so it must
  * never be counted as still "outstanding"/due from the patient. */
@@ -11,19 +13,31 @@ function refundedTotal(bill) {
 /** Sum of every post-billing discount on a bill - also money already handed
  * back, not still owed, for the same reason as a refund. */
 function postDiscountTotal(bill) {
-  return (bill.BillDiscounts || []).reduce((sum, d) => sum + Number(d.amount), 0);
+  // A post-billing discount that was later cancelled was reversed - not given.
+  return (bill.BillDiscounts || []).filter((d) => !d.cancelledAt).reduce((sum, d) => sum + Number(d.amount), 0);
 }
 
-/** Everything already given back on a bill (cancellation refunds + post-billing
- * discounts) - the amount that must be netted out of any "outstanding" figure. */
-function givenBackTotal(bill) {
-  return refundedTotal(bill) + postDiscountTotal(bill);
+/** What the patient still owes on a bill. Bill.dueAmount is kept current by
+ * billing itself - net of the discount given at billing time, GST, partial and
+ * due payments, refunds and post-billing discounts - so it's used as-is rather
+ * than re-derived from totalAmount (which is before any discount). */
+function dueTotal(bill) {
+  return Number(bill.dueAmount) || 0;
 }
+
+// Every client is in India, but the server runs in UTC - day boundaries and
+// day/month grouping are worked out in IST so a bill made at 1 AM lands on
+// the right day.
+const IST_OFFSET_MS = 330 * 60 * 1000;
 
 function dateKey(date, groupBy) {
-  const d = new Date(date);
-  if (groupBy === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  return d.toISOString().slice(0, 10);
+  const ist = new Date(new Date(date).getTime() + IST_OFFSET_MS).toISOString();
+  return groupBy === 'month' ? ist.slice(0, 7) : ist.slice(0, 10);
+}
+
+/** A "YYYY-MM-DD" from the date pickers, as the start of that day in IST. */
+function istDayStart(value) {
+  return /^d{4}-d{2}-d{2}$/.test(String(value)) ? new Date(`${value}T00:00:00+05:30`) : new Date(value);
 }
 
 /**
@@ -32,8 +46,8 @@ function dateKey(date, groupBy) {
  * from a caller) instead of handing Postgres an invalid date and 500ing.
  */
 function dateRangeWhere(from, to) {
-  const fromDate = from ? new Date(from) : null;
-  const toDate = to ? new Date(to) : null;
+  const fromDate = from ? istDayStart(from) : null;
+  const toDate = to ? istDayStart(to) : null;
   const validFrom = fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate : null;
   const validTo = toDate && !Number.isNaN(toDate.getTime()) ? toDate : null;
   if (!validFrom && !validTo) return {};
@@ -41,9 +55,7 @@ function dateRangeWhere(from, to) {
   const range = {};
   if (validFrom) range[Op.gte] = validFrom;
   if (validTo) {
-    const end = new Date(validTo);
-    end.setHours(23, 59, 59, 999);
-    range[Op.lte] = end;
+    range[Op.lt] = new Date(validTo.getTime() + 24 * 60 * 60 * 1000); // up to the end of that day
   }
   return { createdAt: range };
 }
@@ -71,6 +83,8 @@ async function collectionSummary(req, res) {
   const { from, to } = req.query;
   const bills = await Bill.findAll({ where: { clientId, ...dateRangeWhere(from, to) }, include: [Refund, BillDiscount] });
   const totalBilled = bills.reduce((s, b) => s + Number(b.totalAmount), 0);
+  const totalDiscount = bills.reduce((s, b) => s + Number(b.discount), 0);
+  const totalTax = bills.reduce((s, b) => s + Number(b.taxAmount), 0);
   const totalCollected = bills.reduce((s, b) => s + Number(b.paidAmount), 0);
   const totalRefunded = bills.reduce((s, b) => s + refundedTotal(b), 0);
   const totalPostDiscount = bills.reduce((s, b) => s + postDiscountTotal(b), 0);
@@ -81,9 +95,11 @@ async function collectionSummary(req, res) {
     totalCollected,
     totalRefunded,
     totalPostDiscount,
-    // A refund/post-billing discount is money already given back, not money
-    // still owed - net both out so they never inflate "outstanding".
-    outstanding: totalBilled - totalCollected - totalRefunded - totalPostDiscount,
+    totalDiscount,
+    totalTax,
+    // Gross (test prices) less the discount given at billing, plus GST.
+    netAmount: totalBilled - totalDiscount + totalTax,
+    outstanding: bills.reduce((s, b) => s + dueTotal(b), 0),
   });
 }
 
@@ -97,19 +113,18 @@ async function outstanding(req, res) {
     order: [['createdAt', 'DESC']],
   });
   const unpaid = bills
-    .map((b) => {
-      const givenBack = givenBackTotal(b);
-      return {
-        billNo: b.billNo,
-        patient: b.Patient?.name,
-        totalAmount: b.totalAmount,
-        paidAmount: b.paidAmount,
-        refundedAmount: refundedTotal(b),
-        postDiscountAmount: postDiscountTotal(b),
-        outstanding: Number(b.totalAmount) - Number(b.paidAmount) - givenBack,
-        createdAt: b.createdAt,
-      };
-    })
+    .map((b) => ({
+      billNo: b.billNo,
+      patient: b.Patient?.name,
+      totalAmount: b.totalAmount,
+      discount: b.discount,
+      taxAmount: b.taxAmount,
+      paidAmount: b.paidAmount,
+      refundedAmount: refundedTotal(b),
+      postDiscountAmount: postDiscountTotal(b),
+      outstanding: dueTotal(b),
+      createdAt: b.createdAt,
+    }))
     .filter((b) => b.outstanding > 0);
   return res.json(unpaid);
 }
@@ -201,6 +216,91 @@ async function testWiseRevenue(req, res) {
   return res.json(Object.values(grouped));
 }
 
+/** "frontoffice (DEMO001)" -> "frontoffice" - the audit actor without the client code. */
+function actorName(actor) {
+  return String(actor || 'Unknown').replace(/\s*\([^)]*\)\s*$/, '') || 'Unknown';
+}
+
+/**
+ * Money on the bills created in the range, split by payment mode and by the
+ * user who did it. Each mode's Net equals what's left in hand, so the modes add
+ * up to the Total Collected card: the payment taken at billing (under the
+ * bill's mode), due payments collected later (under their own mode), minus
+ * refunds and post-billing discounts handed back (under the mode they were
+ * paid back in).
+ */
+async function buildPaymentBreakdown(clientId, range) {
+  const bills = await Bill.findAll({ where: { clientId, ...range }, include: [Refund, BillDiscount, DuePayment] });
+
+  const modes = new Map();
+  const mode = (name) => {
+    if (!modes.has(name)) modes.set(name, { mode: name, payments: 0, collected: 0, refunded: 0 });
+    return modes.get(name);
+  };
+  const users = new Map();
+  const user = (name) => {
+    if (!users.has(name)) {
+      users.set(name, { user: name, bills: 0, gross: 0, discount: 0, tax: 0, net: 0, collected: 0, refunded: 0, outstanding: 0 });
+    }
+    return users.get(name);
+  };
+
+  for (const b of bills) {
+    const dues = b.DuePayments || [];
+    const refunds = b.Refunds || [];
+    const paidBack = (b.BillDiscounts || []).filter((d) => !d.cancelledAt)
+      .map((d) => ({ ...d.get(), back: Number(d.amount) - Number(d.fromDueAmount || 0) }))
+      .filter((d) => d.back > 0);
+    // paidAmount is the running net; undo the later movements to get what was taken at billing.
+    const atBilling = Number(b.paidAmount)
+      - dues.reduce((s, d) => s + Number(d.amount), 0)
+      + refunds.reduce((s, r) => s + Number(r.amount), 0)
+      + paidBack.reduce((s, d) => s + d.back, 0);
+    const billMode = b.paymentMode || (b.payorId ? 'Credit (Payor)' : 'Not specified');
+
+    const u = user(actorName(b.createdBy));
+    u.bills += 1;
+    u.gross += Number(b.totalAmount);
+    u.discount += Number(b.discount);
+    u.tax += Number(b.taxAmount);
+    u.net += Number(b.totalAmount) - Number(b.discount) + Number(b.taxAmount);
+    u.outstanding += Number(b.dueAmount) || 0;
+
+    if (atBilling > 0.004) {
+      const m = mode(billMode); m.payments += 1; m.collected += atBilling;
+      u.collected += atBilling;
+    }
+    for (const d of dues) {
+      const m = mode(d.mode || 'Not specified'); m.payments += 1; m.collected += Number(d.amount);
+      user(actorName(d.createdBy)).collected += Number(d.amount);
+    }
+    for (const r of refunds) {
+      mode(r.mode || 'Not specified').refunded += Number(r.amount);
+      user(actorName(r.createdBy)).refunded += Number(r.amount);
+    }
+    for (const d of paidBack) {
+      mode(d.mode || 'Not specified').refunded += d.back;
+      user(actorName(d.createdBy)).refunded += d.back;
+    }
+  }
+
+  const round = (n) => Math.round(n * 100) / 100;
+  const byMode = [...modes.values()]
+    .map((m) => ({ ...m, collected: round(m.collected), refunded: round(m.refunded), net: round(m.collected - m.refunded) }))
+    .sort((a, b) => b.net - a.net);
+  const byUser = [...users.values()]
+    .map((u) => Object.fromEntries(Object.entries(u).map(([k, v]) => [k, typeof v === 'number' ? round(v) : v])))
+    .sort((a, b) => b.net - a.net || a.user.localeCompare(b.user));
+  return { byMode, byUser };
+}
+
+// GET /api/reports/payment-breakdown?from=&to=
+async function paymentBreakdown(req, res) {
+  const { clientId } = req.user;
+  const { from, to } = req.query;
+  return res.json(await buildPaymentBreakdown(clientId, dateRangeWhere(from, to)));
+}
+
 // GET /api/reports/report-status?from=&to=
 async function reportStatusCounts(req, res) {
   const { clientId } = req.user;
@@ -241,11 +341,14 @@ async function exportReport(req, res) {
     'From Date': from || 'All time',
     'To Date': to || 'All time',
     Bills: bills.length,
-    'Total Billed': bills.reduce((s, b) => s + Number(b.totalAmount), 0),
+    'Gross Amount': bills.reduce((s, b) => s + Number(b.totalAmount), 0),
+    Discount: bills.reduce((s, b) => s + Number(b.discount), 0),
+    GST: bills.reduce((s, b) => s + Number(b.taxAmount), 0),
+    'Net Amount': bills.reduce((s, b) => s + Number(b.totalAmount) - Number(b.discount) + Number(b.taxAmount), 0),
     'Total Collected': bills.reduce((s, b) => s + Number(b.paidAmount), 0),
     'Total Refunded': totalRefunded,
     'Total Post-Billing Discount': totalPostDiscount,
-    Outstanding: bills.reduce((s, b) => s + Number(b.totalAmount) - Number(b.paidAmount) - givenBackTotal(b), 0),
+    Outstanding: bills.reduce((s, b) => s + dueTotal(b), 0),
   }];
 
   const outstandingRows = bills
@@ -253,10 +356,12 @@ async function exportReport(req, res) {
       'Bill No': b.billNo,
       Patient: b.Patient?.name || '',
       'Total Amount': b.totalAmount,
+      Discount: b.discount,
+      GST: b.taxAmount,
       'Paid Amount': b.paidAmount,
       Refunded: refundedTotal(b),
       'Post-Billing Discount': postDiscountTotal(b),
-      Outstanding: Number(b.totalAmount) - Number(b.paidAmount) - givenBackTotal(b),
+      Outstanding: dueTotal(b),
     }))
     .filter((r) => r.Outstanding > 0);
 
@@ -289,8 +394,19 @@ async function exportReport(req, res) {
     'Collected At': s.collectedAt,
   })));
 
+  const { byMode, byUser } = await buildPaymentBreakdown(clientId, range);
+  const modeRows = byMode.map((m) => ({
+    'Payment Mode': m.mode, Payments: m.payments, Collected: m.collected, 'Refunded / Paid Back': m.refunded, Net: m.net,
+  }));
+  const userRows = byUser.map((u) => ({
+    User: u.user, Bills: u.bills, Gross: u.gross, Discount: u.discount, GST: u.tax, Net: u.net,
+    Collected: u.collected, 'Refunded / Paid Back': u.refunded, Outstanding: u.outstanding,
+  }));
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(modeRows.length ? modeRows : [{ 'Payment Mode': 'No payments' }]), 'Payment Mode-wise');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(userRows.length ? userRows : [{ User: 'No bills' }]), 'User-wise');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(transactionRows), 'Transactions');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(testRevenueRows), 'Test-wise Revenue');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(outstandingRows), 'Outstanding');
@@ -305,4 +421,5 @@ async function exportReport(req, res) {
 
 module.exports = {
   transactions, collectionSummary, outstanding, labSummary, labDetails, testWiseRevenue, reportStatusCounts, exportReport,
+  paymentBreakdown,
 };
