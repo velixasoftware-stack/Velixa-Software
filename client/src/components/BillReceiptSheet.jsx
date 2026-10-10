@@ -1,4 +1,5 @@
 import { numberToWords } from '../utils/numberToWords';
+import { doctorLabel } from '../utils/format';
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -70,7 +71,7 @@ export default function BillReceiptSheet({ bill }) {
             <div><span>Umr No</span><strong>{bill.Patient?.umr}</strong></div>
             <div><span>Reg.Date</span><strong>{formatDateTime(bill.createdAt)}</strong></div>
             <div><span>Age/Gender</span><strong>{bill.Patient?.age ?? '—'} {bill.Patient?.ageUnit || 'Years'} / {bill.Patient?.gender || '—'}</strong></div>
-            <div><span>Ref.By</span><strong>{bill.ReferralDoctor?.name ? `Dr. ${bill.ReferralDoctor.name}` : '-'}</strong></div>
+            <div><span>Ref.By</span><strong>{doctorLabel(bill.ReferralDoctor?.name) || '-'}</strong></div>
             <div><span>Client Name</span><strong>{bill.Payor?.name || '-'}</strong></div>
             <div><span>Mobile No</span><strong>{bill.Patient?.mobile || '—'}</strong></div>
           </div>

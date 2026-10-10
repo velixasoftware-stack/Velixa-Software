@@ -1433,6 +1433,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .front-desk .card { padding: 10px 14px; margin-bottom: 10px; }
 .front-desk .form-grid { gap: 8px 10px; margin-bottom: 0; }
 .front-desk .fd-patient-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* Same width/height as the fields beside it (the app-wide date input is auto-width). */
+.front-desk .fd-patient-grid input[type='date'] { width: 100%; height: auto; padding: 6px 9px; font-size: inherit; border-radius: 6px; }
 .front-desk .fd-top-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 8px; }
 .front-desk .fd-top-row .fd-grow { flex: 1 1 220px; min-width: 0; }
 .front-desk .fd-top-row .fd-field > span:first-child { display: block; font-size: 11.5px; font-weight: 600; color: #475569; margin-bottom: 3px; }
@@ -1465,4 +1467,20 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
   .front-desk .fd-top-row .segmented-toggle { width: 100%; }
   .front-desk .fd-top-row .fd-field { flex: 1 1 100%; }
   .front-desk .selected-item-row { flex-wrap: wrap; }
+}
+
+/* ---- Bill receipt on phones (screen only - printing keeps the paper layout) ---- */
+@media screen and (max-width: 600px) {
+  .bill-receipt-header { grid-template-columns: 1fr; }
+  .bill-receipt-logo { border-right: none; border-bottom: 1px solid #1a1a1a; }
+  .bill-receipt-info { grid-template-columns: 1fr; }
+  .bill-receipt-info > div:nth-last-child(-n+2) { border-bottom: 1px solid #e2e8f0; }
+  .bill-receipt-info > div:last-child { border-bottom: none; }
+  .report-sheet .bill-receipt-table { display: table; width: 100%; white-space: normal; }
+  .bill-receipt-table th, .bill-receipt-table td { font-size: 11px; padding: 5px 4px; }
+  .bill-receipt-table th { letter-spacing: 0; }
+  .bill-receipt-table td:nth-child(3) { word-break: break-all; }
+  .bill-receipt-footer { flex-direction: column; gap: 10px; }
+  .bill-receipt-summary { width: 100%; align-items: stretch; }
+  .bill-receipt-summary > div { min-width: 0; }
 }

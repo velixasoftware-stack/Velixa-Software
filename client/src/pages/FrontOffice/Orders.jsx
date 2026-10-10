@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icons';
 import { StatusLegend, TestStatusSummary, TestStatusDetail } from '../../components/TestStatus';
+import { doctorLabel } from '../../utils/format';
 
 const REFUND_MODES = ['Cash', 'Card', 'UPI', 'Insurance'];
 
@@ -241,7 +242,7 @@ export default function Orders() {
                   <div className="cell-main">{b.patient?.name}</div>
                   <div className="cell-sub">{b.patient?.umr}{b.patient?.mobile ? ` · ${b.patient.mobile}` : ''}</div>
                 </td>
-                <td>{b.referredDoctor ? `Dr. ${b.referredDoctor}` : '—'}</td>
+                <td>{doctorLabel(b.referredDoctor) || '—'}</td>
                 <td>
                   <div className="cell-main">₹{b.paidAmount}</div>
                   {Number(b.dueAmount) > 0 && <div className="cell-sub due">Due ₹{b.dueAmount}</div>}

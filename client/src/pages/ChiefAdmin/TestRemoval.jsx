@@ -157,6 +157,12 @@ export default function TestRemoval() {
             <option value="Active">Active ({tests.length - inactiveCount})</option>
             <option value="Inactive">Inactive ({inactiveCount})</option>
           </select>
+          {/* Also here, not just in the table header - on phones the table
+              turns into cards and its header row isn't shown. */}
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', alignSelf: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: '#334155', whiteSpace: 'nowrap', margin: 0 }}>
+            <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} disabled={filtered.length === 0} style={{ width: 16, height: 16 }} />
+            Select all shown ({filtered.length})
+          </label>
         </div>
 
         {selected.size > 0 && (

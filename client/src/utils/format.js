@@ -14,3 +14,11 @@ export function formatDateDMY(value) {
   if (Number.isNaN(d.getTime())) return '—';
   return `${String(d.getDate()).padStart(2, '0')}-${SHORT_MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
+
+/** A referring doctor's name with a single "Dr." in front - names may be
+ * saved with or without it ("Ramesh Kumar" / "Dr. Ramesh Kumar"). */
+export function doctorLabel(name) {
+  const n = (name || '').trim();
+  if (!n) return '';
+  return /^dr\b\.?/i.test(n) ? n : `Dr. ${n}`;
+}

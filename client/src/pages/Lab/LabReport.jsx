@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import ShareButton from '../../components/ShareButton';
 import { ReportRemarks } from '../../components/Remarks';
+import { doctorLabel } from '../../utils/format';
 
 function formatDateTime(d) {
   if (!d) return '—';
@@ -114,7 +115,7 @@ export default function LabReport() {
           <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
           <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
           <div><span>Mobile</span><strong>{patient?.mobile || '—'}</strong></div>
-          <div><span>Referred By</span><strong>{report.bill.referredDoctor ? `Dr. ${report.bill.referredDoctor}` : 'Self'}</strong></div>
+          <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
           <div><span>Billed To</span><strong>{report.bill.payor || 'Self / Direct'}</strong></div>
           <div><span>Bill Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
           <div><span>Report Date</span><strong>{formatDateTime(releasedAt)}</strong></div>
