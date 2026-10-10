@@ -39,8 +39,20 @@ app.use('/api', routes);
 // through to index.html so React Router can handle client-side routes.
 const CLIENT_DIST = path.join(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(CLIENT_DIST)) {
-  app.use(express.static(CLIENT_DIST));
-  app.get(/^(?!\/api|\/uploads).*/, (_req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')));
+  // Vite's /assets files carry a content hash in their name, so a browser can
+  // keep them for a year - a new build gets new names. index.html must always
+  // be re-checked so a deploy is picked up; the logos/icons can sit a day.
+  app.use(express.static(CLIENT_DIST, {
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      else if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      else res.setHeader('Cache-Control', 'public, max-age=86400');
+    },
+  }));
+  app.get(/^(?!\/api|\/uploads).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+  });
 }
 
 app.use((err, _req, res, _next) => {
