@@ -1,5 +1,7 @@
 const XLSX = require('xlsx');
-const { ClientTestPrice, TestMaster, Client } = require('../models');
+const {
+  sequelize, ClientTestPrice, ClientTestShortName, TestMaster, Client, Payor, PayorTestPrice, Package,
+} = require('../models');
 
 function resolveClientId(req) {
   return req.params.clientId || req.user.clientId;
@@ -125,4 +127,44 @@ async function commitUpload(req, res) {
   return res.json(results);
 }
 
-module.exports = { listPrices, setPrice, downloadTemplate, previewUpload, commitUpload };
+// PUT /api/masters/client-test-price/:testId/status  { active }
+// Switches a test on/off for this client's billing only - the shared Test
+// Master and every other client are untouched.
+async function setPriceStatus(req, res) {
+  const clientId = resolveClientId(req);
+  if (typeof req.body.active !== 'boolean') return res.status(400).json({ message: 'active (true/false) is required' });
+  const record = await ClientTestPrice.findOne({ where: { clientId, testId: req.params.testId } });
+  if (!record) return res.status(404).json({ message: 'This test has no price for your clinic yet - set a price first' });
+  await record.update({ active: req.body.active });
+  return res.json(record);
+}
+
+// DELETE /api/masters/client-test-price/:testId
+// Removes a test from this client's own masters: its price, short name, payor
+// prices and package memberships. A package left with no tests is switched
+// inactive. Bills already made keep their own copy of the test and price.
+async function removeClientTest(req, res) {
+  const clientId = resolveClientId(req);
+  const testId = Number(req.params.testId);
+  const test = await TestMaster.findByPk(testId);
+  if (!test) return res.status(404).json({ message: 'Test not found' });
+
+  await sequelize.transaction(async (transaction) => {
+    await ClientTestPrice.destroy({ where: { clientId, testId }, transaction });
+    await ClientTestShortName.destroy({ where: { clientId, testId }, transaction });
+    const payors = await Payor.findAll({ where: { clientId }, attributes: ['id'], transaction });
+    if (payors.length) {
+      await PayorTestPrice.destroy({ where: { testId, payorId: payors.map((p) => p.id) }, transaction });
+    }
+    const packages = await Package.findAll({ where: { clientId }, include: [TestMaster], transaction });
+    for (const pkg of packages) {
+      if (!pkg.TestMasters.some((t) => t.id === testId)) continue;
+      await pkg.removeTestMaster(testId, { transaction });
+      if (pkg.TestMasters.length === 1) await pkg.update({ active: false }, { transaction });
+    }
+  });
+
+  return res.json({ message: `${test.testName} was removed from your clinic's masters` });
+}
+
+module.exports = { listPrices, setPrice, setPriceStatus, removeClientTest, downloadTemplate, previewUpload, commitUpload };

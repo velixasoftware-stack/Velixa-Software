@@ -2,9 +2,22 @@ const router = require('express').Router();
 const multer = require('multer');
 const { authenticate, requireChiefAdminRole } = require('../middleware/auth.middleware');
 const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
+const { runWithActor, getCurrentActor } = require('../utils/auditContext');
 const testCtrl = require('../controllers/testMaster.controller');
 
-const upload = multer({ storage: multer.memoryStorage() });
+// 50 MB covers a few hundred thousand rows of the tests & parameters sheet.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+// multer finishes inside the file stream's callbacks, which drops the
+// request's audit context - re-enter it so rows created from the upload are
+// stamped with who uploaded them rather than "SYSTEM".
+function uploadFile(req, res, next) {
+  const actor = getCurrentActor();
+  upload.single('file')(req, res, (err) => {
+    if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ message: 'File is larger than 50 MB - please split it into smaller sheets.' });
+    return err ? next(err) : runWithActor(actor, next);
+  });
+}
 
 // Chief Admin can also manage the global Test Master (same central data
 // client-side MASTER_MANAGER users manage under /api/masters/tests).
@@ -17,6 +30,8 @@ router.post('/groups', testCtrl.createTestGroup);
 router.get('/tests', testCtrl.listTests);
 router.post('/tests', testCtrl.createTest);
 router.put('/tests/:id', testCtrl.updateTest);
+router.get('/tests/:id/usage', testCtrl.testUsage);
+router.delete('/tests/:id', testCtrl.deleteTest);
 router.post('/tests/:testId/parameters', testCtrl.addParameter);
 router.post('/tests/:testId/parameters/:parameterId/assign', testCtrl.assignParameter);
 router.put('/tests/:testId/parameter-order', testCtrl.reorderParameters);
@@ -26,7 +41,7 @@ router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
 
 router.get('/tests/template', testCtrl.downloadTemplate);
-router.post('/tests/upload/preview', upload.single('file'), testCtrl.previewUpload);
-router.post('/tests/upload/commit', testCtrl.commitUpload);
+router.post('/tests/upload/preview', uploadFile, testCtrl.previewUpload);
+router.post('/tests/upload/commit', uploadFile, testCtrl.commitUpload);
 
 module.exports = router;

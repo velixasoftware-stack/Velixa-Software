@@ -127,6 +127,7 @@ export function ChiefAdminLayout() {
               <div className="nav-group-label">Administration</div>
               <NavLink to="/chief-admin/clients/new"><Icon name="building" size={17} /><span>Create Client</span></NavLink>
               <NavLink to="/chief-admin/masters"><Icon name="masters" size={17} /><span>Test Master</span></NavLink>
+              <NavLink to="/chief-admin/test-removal"><Icon name="close" size={17} /><span>Test Removal</span></NavLink>
               <NavLink to="/chief-admin/users"><Icon name="team" size={17} /><span>Team</span></NavLink>
               <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>
               <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>

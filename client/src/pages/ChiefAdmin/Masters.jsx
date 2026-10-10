@@ -72,6 +72,8 @@ export default function Masters() {
   const [bulkPreview, setBulkPreview] = useState(null);
   const [bulkFile, setBulkFile] = useState(null);
   const [bulkMessage, setBulkMessage] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(''); // 'preview' | 'commit' while a request runs
+  const [bulkError, setBulkError] = useState('');
 
   async function load() {
     const { data } = await api.get('/admin/masters/tests');
@@ -289,31 +291,48 @@ export default function Masters() {
     e.preventDefault();
     if (!bulkFile) return;
     setBulkMessage('');
+    setBulkError('');
+    setBulkPreview(null);
+    setBulkBusy('preview');
     const formData = new FormData();
     formData.append('file', bulkFile);
-    const { data } = await api.post('/admin/masters/tests/upload/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    setBulkPreview(data);
+    try {
+      const { data } = await api.post('/admin/masters/tests/upload/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setBulkPreview(data);
+    } catch (err) {
+      setBulkError(err.response?.data?.message || 'Could not read the file');
+    } finally {
+      setBulkBusy('');
+    }
   }
 
+  // Sends the same file again - the server re-reads it and writes only its
+  // valid rows in bulk, so even a 100k-row sheet never has to travel back
+  // from the browser as one giant JSON body.
   async function handleBulkCommit() {
-    const rows = bulkPreview.preview.filter((r) => r.valid).map((r) => ({
-      testCode: r.testCode, testName: r.testName, testCategory: r.testCategory, sampleType: r.sampleType,
-      parameterName: r.parameterName, unit: r.unit, method: r.method, isInterpretation: r.isInterpretation,
-      normalRangeLow: r.normalRangeLow, normalRangeHigh: r.normalRangeHigh,
-      gender: r.gender, ageMin: r.ageMin, ageMax: r.ageMax, ageUnit: r.ageUnit, rangeLow: r.rangeLow, rangeHigh: r.rangeHigh,
-    }));
-    const { data } = await api.post('/admin/masters/tests/upload/commit', { rows });
-    setBulkMessage(
-      `${data.testsCreated} test(s) created, ${data.parametersAdded} parameter(s) added, `
-      + `${data.rangesAdded} age/gender range(s) added, ${data.skipped} already existed, ${data.errors.length} failed.`,
-    );
-    setBulkPreview(null);
-    setBulkFile(null);
-    load();
+    setBulkError('');
+    setBulkBusy('commit');
+    const formData = new FormData();
+    formData.append('file', bulkFile);
+    try {
+      const { data } = await api.post('/admin/masters/tests/upload/commit', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setBulkMessage(
+        `${data.testsCreated} test(s) created, ${data.parametersAdded} parameter(s) added, `
+        + `${data.rangesAdded} age/gender range(s) added, ${data.skipped} already existed, ${data.errors.length} failed.`,
+      );
+      setBulkPreview(null);
+      setBulkFile(null);
+      load();
+    } catch (err) {
+      setBulkError(err.response?.data?.message || 'Upload failed - nothing was saved. Please try again.');
+    } finally {
+      setBulkBusy('');
+    }
   }
-
 
   // Removes a parameter from the selected test (switched off, or unlinked if
   // it was shared in from another test) - results already released keep it.
@@ -328,6 +347,62 @@ It will no longer appear on result entry. Reports already released keep their va
       window.alert(err.response?.data?.message || 'Could not remove the parameter');
     }
   }
+
+  // Platform-wide switch: an inactive test disappears from every client's
+  // billing, but stays on old bills/reports and can be switched back on.
+  async function toggleTestActive(test) {
+    const turningOff = test.active !== false;
+    if (!window.confirm(turningOff
+      ? `Mark "${test.testName}" Inactive?\n\nNo client will be able to bill it. Old bills and reports keep it, and you can make it Active again any time.`
+      : `Make "${test.testName}" Active again for all clients?`)) return;
+    try {
+      await api.put(`/admin/masters/tests/${test.id}`, { active: !turningOff });
+      await load();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not change the test status');
+    }
+  }
+
+  // Permanent delete of the test and all its master data. The server refuses
+  // once the test has patient history - Inactive is offered instead.
+  async function deleteTest(test) {
+    let usage;
+    try {
+      ({ data: usage } = await api.get(`/admin/masters/tests/${test.id}/usage`));
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not check where this test is used');
+      return;
+    }
+    if (!usage.canDelete) {
+      if (test.active !== false && window.confirm(`${usage.blockedReason}\n\nMark "${test.testName}" Inactive now?`)) {
+        try {
+          await api.put(`/admin/masters/tests/${test.id}`, { active: false });
+          await load();
+        } catch (err) {
+          window.alert(err.response?.data?.message || 'Could not change the test status');
+        }
+      } else if (test.active === false) {
+        window.alert(usage.blockedReason);
+      }
+      return;
+    }
+    if (!window.confirm(`Permanently delete "${test.testName}" (${test.testCode})?
+
+This also removes, for every client:
+  • ${usage.parameters} parameter(s) and their normal ranges
+  • ${usage.clientPrices} client price(s), ${usage.shortNames} short name(s)
+  • ${usage.payorPrices} payor price(s), ${usage.packages} package link(s)
+
+This cannot be undone.`)) return;
+    try {
+      await api.delete(`/admin/masters/tests/${test.id}`);
+      setSelectedTestId(null);
+      await load();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not delete the test');
+    }
+  }
+
   return (
     <div>
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -364,7 +439,10 @@ It will no longer appear on result entry. Reports already released keep their va
                 className={`test-pick-card${t.id === selectedTestId ? ' active' : ''}`}
                 onClick={() => setSelectedTestId(t.id)}
               >
-                <strong>{t.testName}</strong>
+                <strong>
+                  {t.testName}
+                  {t.active === false && <span className="badge EXPIRED" style={{ marginLeft: 6 }}>Inactive</span>}
+                </strong>
                 <span className="meta">{t.category || 'Uncategorized'} · {(t.ParameterMasters || []).length} param(s)</span>
               </button>
             ))}
@@ -378,7 +456,12 @@ It will no longer appear on result entry. Reports already released keep their va
             <>
               <div className="masters-detail-head">
                 <div>
-                  <h2>{selectedTest.testName}</h2>
+                  <h2>
+                    {selectedTest.testName}{' '}
+                    <span className={`badge ${selectedTest.active === false ? 'EXPIRED' : 'PAID'}`} style={{ fontSize: 12, verticalAlign: 'middle' }}>
+                      {selectedTest.active === false ? 'Inactive' : 'Active'}
+                    </span>
+                  </h2>
                   <p className="meta">
                     {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} ·{' '}
                     {(selectedTest.ParameterMasters || []).length} parameter(s) configured
@@ -387,6 +470,12 @@ It will no longer appear on result entry. Reports already released keep their va
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" className="secondary icon-btn" title="Edit test details" onClick={() => openEditTest(selectedTest)}>
                     <Icon name="edit" size={15} />
+                  </button>
+                  <button type="button" className="secondary" onClick={() => toggleTestActive(selectedTest)}>
+                    {selectedTest.active === false ? 'Make Active' : 'Make Inactive'}
+                  </button>
+                  <button type="button" className="danger" title="Delete this test and all its master data" onClick={() => deleteTest(selectedTest)}>
+                    Delete Test
                   </button>
                   <button type="button" onClick={openAddParameter}>+ Add Parameter</button>
                 </div>
@@ -697,12 +786,17 @@ It will no longer appear on result entry. Reports already released keep their va
         </div>
         <form onSubmit={handleBulkPreview} className="form-grid" style={{ alignItems: 'end' }}>
           <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setBulkFile(e.target.files[0])} />
-          <button type="submit" disabled={!bulkFile}>Preview</button>
+          <button type="submit" disabled={!bulkFile || !!bulkBusy}>{bulkBusy === 'preview' ? 'Reading file…' : 'Preview'}</button>
         </form>
 
         {bulkPreview && (
           <>
             <p>{bulkPreview.validRows} valid, {bulkPreview.invalidRows} invalid of {bulkPreview.totalRows} rows.</p>
+            {bulkPreview.shownRows < bulkPreview.totalRows && (
+              <p style={{ fontSize: 13, color: '#64748b' }}>
+                Showing {bulkPreview.shownRows} rows (the first rows plus any invalid ones) - all {bulkPreview.validRows} valid rows will be uploaded.
+              </p>
+            )}
             <table>
               <thead><tr><th>Row</th><th>Test Code</th><th>Test Name</th><th>Parameter</th><th>Unit</th><th>Method</th><th>Default Range</th><th>Age/Gender Range</th><th>Action</th><th>Status</th></tr></thead>
               <tbody>
@@ -718,11 +812,12 @@ It will no longer appear on result entry. Reports already released keep their va
                 ))}
               </tbody>
             </table>
-            <button onClick={handleBulkCommit} disabled={bulkPreview.validRows === 0} style={{ marginTop: 12 }}>
-              Upload {bulkPreview.validRows} Valid Rows
+            <button onClick={handleBulkCommit} disabled={bulkPreview.validRows === 0 || !!bulkBusy} style={{ marginTop: 12 }}>
+              {bulkBusy === 'commit' ? `Uploading ${bulkPreview.validRows} rows… please wait` : `Upload ${bulkPreview.validRows} Valid Rows`}
             </button>
           </>
         )}
+        {bulkError && <p className="error-text">{bulkError}</p>}
         {bulkMessage && <p style={{ color: '#166534' }}>{bulkMessage}</p>}
       </div>
     </div>

@@ -65,6 +65,7 @@ async function start() {
   }
   await sequelize.query(`ALTER TABLE client_role_screen ADD COLUMN IF NOT EXISTS "grantedScreens" JSON NOT NULL DEFAULT '[]'`);
   await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
+  await sequelize.query('ALTER TABLE client_test_price ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT');
   await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS "remarksBig" BOOLEAN NOT NULL DEFAULT false');
   await sequelize.query("ALTER TABLE patient ADD COLUMN IF NOT EXISTS \"ageUnit\" VARCHAR(255) DEFAULT 'Years'");

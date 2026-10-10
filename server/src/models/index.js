@@ -314,6 +314,10 @@ const ClientTestShortName = sequelize.define('ClientTestShortName', {
 const ClientTestPrice = sequelize.define('ClientTestPrice', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  // Per-client switch: false hides this test from this client's billing only,
+  // without touching the shared Test Master (whose own `active` is Chief
+  // Admin's platform-wide switch).
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   ...AUDIT_FIELDS,
 }, {
   tableName: 'client_test_price',

@@ -31,6 +31,8 @@ router.put('/client-test-price', priceCtrl.setPrice);
 router.get('/client-test-price/template', priceCtrl.downloadTemplate);
 router.post('/client-test-price/upload/preview', upload.single('file'), priceCtrl.previewUpload);
 router.post('/client-test-price/upload/commit', priceCtrl.commitUpload);
+router.put('/client-test-price/:testId/status', priceCtrl.setPriceStatus);
+router.delete('/client-test-price/:testId', priceCtrl.removeClientTest);
 
 // Packages (client-wise bundles of tests with their own price)
 router.get('/packages', packageCtrl.listPackages);

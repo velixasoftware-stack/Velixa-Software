@@ -93,6 +93,10 @@ async function createBill(req, res) {
   if (prices.length !== testIds.length) {
     return res.status(400).json({ message: 'Price not configured for one or more selected tests' });
   }
+  const inactive = prices.filter((p) => !p.active || !p.TestMaster?.active);
+  if (inactive.length) {
+    return res.status(400).json({ message: `Inactive test(s) can't be billed: ${inactive.map((p) => p.TestMaster?.testName).join(', ')}` });
+  }
 
   let payor = null;
   let payorPriceByTestId = new Map();
@@ -251,6 +255,7 @@ async function addBillItem(req, res) {
 
   const priceRow = await ClientTestPrice.findOne({ where: { clientId, testId }, include: [TestMaster] });
   if (!priceRow) return res.status(400).json({ message: 'Price not configured for this test' });
+  if (!priceRow.active || !priceRow.TestMaster?.active) return res.status(400).json({ message: 'This test is inactive and can\'t be billed' });
 
   const existingActive = await BillItem.findOne({ where: { billId: bill.id, testId, status: 'ACTIVE' } });
   if (existingActive) return res.status(409).json({ message: 'This test is already active on this bill' });
@@ -568,7 +573,8 @@ async function listBills(req, res) {
 async function listTestPrices(req, res) {
   const { clientId } = req.user;
   const [prices, shortNames] = await Promise.all([
-    ClientTestPrice.findAll({ where: { clientId }, include: [TestMaster] }),
+    // Only tests active both for this client and in the shared Test Master.
+    ClientTestPrice.findAll({ where: { clientId, active: true }, include: [{ model: TestMaster, where: { active: true } }] }),
     ClientTestShortName.findAll({ where: { clientId } }),
   ]);
   const shortNameByTestId = new Map(shortNames.map((s) => [s.testId, s.shortName]));

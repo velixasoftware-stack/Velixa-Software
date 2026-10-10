@@ -127,6 +127,58 @@ export default function Masters() {
     loadAll();
   }
 
+  // Active/Inactive here is for this clinic only - the shared Test Master and
+  // other clinics are untouched. A test Chief Admin made inactive can't be
+  // switched back on from here.
+  async function toggleClientTest(test, priceRow) {
+    const turningOff = priceRow.active !== false;
+    if (!window.confirm(turningOff
+      ? `Mark "${test.testName}" Inactive for your clinic?\n\nIt can't be billed until you make it Active again. Old bills and reports keep it.`
+      : `Make "${test.testName}" Active again for your clinic?`)) return;
+    try {
+      await api.put(`/masters/client-test-price/${test.id}/status`, { active: !turningOff });
+      loadAll();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not change the test status');
+    }
+  }
+
+  async function removeClientTest(test) {
+    if (!window.confirm(`Remove "${test.testName}" from your clinic?
+
+This deletes your clinic's price, short name and payor prices for it, and takes it out of your packages. Bills already made are not changed.`)) return;
+    try {
+      await api.delete(`/masters/client-test-price/${test.id}`);
+      loadAll();
+    } catch (err) {
+      window.alert(err.response?.data?.message || 'Could not remove the test');
+    }
+  }
+
+  const priceRowByTestId = new Map(prices.map((p) => [p.testId ?? p.TestMaster?.id, p]));
+
+  function testStatus(test) {
+    const row = priceRowByTestId.get(test.id);
+    if (test.active === false) return <span className="badge EXPIRED" title="Switched off by Chief Admin for all clinics">Inactive (Chief Admin)</span>;
+    if (!row) return <span className="badge PENDING">No price</span>;
+    return row.active === false ? <span className="badge EXPIRED">Inactive</span> : <span className="badge PAID">Active</span>;
+  }
+
+  function testActions(test) {
+    const row = priceRowByTestId.get(test.id);
+    if (!row) return null;
+    return (
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+        {test.active !== false && (
+          <button type="button" className="secondary" onClick={() => toggleClientTest(test, row)}>
+            {row.active === false ? 'Make Active' : 'Make Inactive'}
+          </button>
+        )}
+        <button type="button" className="danger" onClick={() => removeClientTest(test)}>Remove</button>
+      </div>
+    );
+  }
+
   const priceByTestId = new Map(prices.map((p) => [p.testId ?? p.TestMaster?.id, Number(p.price)]));
   const q = search.trim().toLowerCase();
   const matches = (...fields) => !q || fields.some((f) => (f || '').toString().toLowerCase().includes(q));
@@ -164,13 +216,15 @@ export default function Masters() {
           </form>
           <div className="masters-table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Code</th><th>Name</th><th>Parameters</th></tr></thead>
+              <thead><tr><th>Code</th><th>Name</th><th>Parameters</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {tests.filter((t) => matches(t.testCode, t.testName)).map((t) => (
                   <tr key={t.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{t.testCode}</td>
                     <td>{t.testName}</td>
                     <td className="cell-sub" style={{ whiteSpace: 'normal' }}>{(t.ParameterMasters || []).map((p) => p.parameterName).join(', ') || '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{testStatus(t)}</td>
+                    <td>{testActions(t)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -196,13 +250,15 @@ export default function Masters() {
           </form>
           <div className="masters-table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Test Code</th><th>Test Name</th><th style={{ textAlign: 'right' }}>Price</th></tr></thead>
+              <thead><tr><th>Test Code</th><th>Test Name</th><th style={{ textAlign: 'right' }}>Price</th><th>Status</th><th></th></tr></thead>
               <tbody>
-                {prices.filter((p) => matches(p.TestMaster?.testCode, p.TestMaster?.testName)).map((p) => (
+                {prices.filter((p) => p.TestMaster && matches(p.TestMaster.testCode, p.TestMaster.testName)).map((p) => (
                   <tr key={p.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{p.TestMaster?.testCode}</td>
-                    <td>{p.TestMaster?.testName}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{p.TestMaster.testCode}</td>
+                    <td>{p.TestMaster.testName}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{p.price}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{testStatus(p.TestMaster)}</td>
+                    <td>{testActions(p.TestMaster)}</td>
                   </tr>
                 ))}
               </tbody>

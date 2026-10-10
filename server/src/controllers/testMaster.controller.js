@@ -1,6 +1,9 @@
 const { Op } = require('sequelize');
 const XLSX = require('xlsx');
-const { TestGroup, TestMaster, ParameterMaster, ParameterNormalRange } = require('../models');
+const {
+  sequelize, TestGroup, TestMaster, ParameterMaster, ParameterNormalRange, BillItem, Result,
+  ClientTestPrice, ClientTestShortName, PayorTestPrice,
+} = require('../models');
 const { sortParameters } = require('../utils/parameterOrder');
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Any'];
@@ -126,7 +129,11 @@ async function listTests(req, res) {
 async function updateTest(req, res) {
   const test = await TestMaster.findByPk(req.params.id);
   if (!test) return res.status(404).json({ message: 'Test not found' });
-  const { testName, category, sampleType, interpretation, active } = req.body;
+  const { testName, category, sampleType, interpretation } = req.body;
+  // Test Master's own active flag switches the test off for every client, so
+  // only Chief Admin may change it - a client switches a test off for itself
+  // only, via its price row (see clientTestPrice.setPriceStatus).
+  const active = requesterClientId(req) ? undefined : req.body.active;
   await test.update({
     testName: testName ?? test.testName,
     category: category !== undefined ? category : test.category,
@@ -135,6 +142,83 @@ async function updateTest(req, res) {
     active: active ?? test.active,
   });
   return res.json(test);
+}
+
+// Everything that references a test, so Chief Admin sees what a delete would
+// remove (master data) and what would block it (patient history).
+async function collectTestUsage(test) {
+  const ownParams = await ParameterMaster.findAll({ where: { testId: test.id }, attributes: ['id'] });
+  const ownParamIds = ownParams.map((p) => p.id);
+  const [[{ packages }]] = await sequelize.query(
+    'SELECT COUNT(*)::int AS packages FROM package_test WHERE "testId" = :testId',
+    { replacements: { testId: test.id } },
+  );
+  // This test's own parameters that other tests also use (assigned there) -
+  // deleting them would silently strip those other tests too.
+  const sharedTo = ownParamIds.length === 0 ? [] : (await sequelize.query(
+    `SELECT DISTINCT t."testName" FROM test_parameter_link l JOIN test_master t ON t.id = l."testId"
+      WHERE l."parameterId" IN (:ids) AND l."testId" <> :testId`,
+    { replacements: { ids: ownParamIds, testId: test.id } },
+  ))[0].map((r) => r.testName);
+
+  return {
+    ownParamIds,
+    bills: await BillItem.count({ where: { testId: test.id } }),
+    results: ownParamIds.length ? await Result.count({ where: { parameterId: ownParamIds } }) : 0,
+    sharedTo,
+    parameters: ownParamIds.length,
+    clientPrices: await ClientTestPrice.count({ where: { testId: test.id } }),
+    shortNames: await ClientTestShortName.count({ where: { testId: test.id } }),
+    payorPrices: await PayorTestPrice.count({ where: { testId: test.id } }),
+    packages,
+  };
+}
+
+function deleteBlockReason(usage) {
+  if (usage.bills > 0) return `This test is on ${usage.bills} patient bill(s), so it can't be deleted - mark it Inactive instead.`;
+  if (usage.results > 0) return 'Results have been entered against this test\'s parameters, so it can\'t be deleted - mark it Inactive instead.';
+  if (usage.sharedTo.length > 0) return `This test's parameters are also used by: ${usage.sharedTo.join(', ')}. Remove them from those tests first, or mark this test Inactive instead.`;
+  return null;
+}
+
+// GET /api/admin/masters/tests/:id/usage  (Chief Admin only)
+async function testUsage(req, res) {
+  const test = await TestMaster.findByPk(req.params.id);
+  if (!test) return res.status(404).json({ message: 'Test not found' });
+  const { ownParamIds, ...usage } = await collectTestUsage(test);
+  const blockedReason = deleteBlockReason(usage);
+  return res.json({ ...usage, canDelete: !blockedReason, blockedReason });
+}
+
+// DELETE /api/admin/masters/tests/:id  (Chief Admin only)
+// Permanently removes a test and all of its master data across every client:
+// its parameters and their normal ranges, parameter links, every client's
+// price and short name, payor prices and package memberships. Refused once
+// the test has patient history (bills/results) - that must stay printable,
+// so such a test is switched Inactive instead.
+async function deleteTest(req, res) {
+  const test = await TestMaster.findByPk(req.params.id);
+  if (!test) return res.status(404).json({ message: 'Test not found' });
+  const usage = await collectTestUsage(test);
+  const blocked = deleteBlockReason(usage);
+  if (blocked) return res.status(409).json({ message: blocked });
+
+  await sequelize.transaction(async (transaction) => {
+    const { ownParamIds } = usage;
+    if (ownParamIds.length) {
+      await ParameterNormalRange.destroy({ where: { parameterId: ownParamIds }, transaction });
+      await sequelize.query('DELETE FROM test_parameter_link WHERE "parameterId" IN (:ids)', { replacements: { ids: ownParamIds }, transaction });
+    }
+    await sequelize.query('DELETE FROM test_parameter_link WHERE "testId" = :testId', { replacements: { testId: test.id }, transaction });
+    await sequelize.query('DELETE FROM package_test WHERE "testId" = :testId', { replacements: { testId: test.id }, transaction });
+    await ParameterMaster.destroy({ where: { testId: test.id }, transaction });
+    await ClientTestPrice.destroy({ where: { testId: test.id }, transaction });
+    await ClientTestShortName.destroy({ where: { testId: test.id }, transaction });
+    await PayorTestPrice.destroy({ where: { testId: test.id }, transaction });
+    await test.destroy({ transaction });
+  });
+
+  return res.json({ message: `Test ${test.testCode} and its master data were deleted` });
 }
 
 // POST /api/masters/tests/:testId/parameters
@@ -455,6 +539,75 @@ async function downloadTemplate(req, res) {
   return res.send(buffer);
 }
 
+// Preview only sends back this many rows for on-screen display (plus every
+// invalid row, up to MAX_PREVIEW_ERRORS) - a 100k-row sheet would otherwise
+// mean a huge response and a browser tab trying to draw 100k table rows.
+const MAX_PREVIEW_ROWS = 300;
+const MAX_PREVIEW_ERRORS = 500;
+// Batch size for the IN (...) lookups and bulk inserts in commitUpload.
+const DB_BATCH = 1000;
+
+function chunk(list, size) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+// Reads the uploaded sheet into normalized rows and runs the per-row checks
+// that don't need the database. Shared by previewUpload and commitUpload.
+function parseUploadRows(buffer) {
+  // Lean read options (no formatted-text/HTML/style copies of every cell)
+  // keep a 100k-row sheet to roughly a third of the memory of a default read.
+  const workbook = XLSX.read(buffer, {
+    type: 'buffer', dense: true, cellText: false, cellHTML: false, cellFormula: false, cellStyles: false,
+  });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+  return rows.map((r, idx) => {
+    const row = {
+      row: idx + 2, // account for header row
+      testCode: String(r.TEST_CODE || '').trim(),
+      testName: String(r.TEST_NAME || '').trim(),
+      testCategory: String(r.TEST_CATEGORY || '').trim(),
+      sampleType: String(r.SAMPLE_TYPE || '').trim(),
+      parameterName: String(r.PARAMETER_NAME || '').trim(),
+      unit: String(r.UNIT || '').trim(),
+      method: String(r.METHOD || '').trim(),
+      isInterpretation: String(r.IS_INTERPRETATION || '').trim().toUpperCase() === 'Y',
+      normalRangeLow: String(r.NORMAL_RANGE_LOW || '').trim(),
+      normalRangeHigh: String(r.NORMAL_RANGE_HIGH || '').trim(),
+      gender: String(r.GENDER || '').trim(),
+      ageMin: String(r.AGE_MIN ?? '').trim(),
+      ageMax: String(r.AGE_MAX ?? '').trim(),
+      ageUnit: String(r.AGE_UNIT || '').trim(),
+      rangeLow: String(r.RANGE_LOW || '').trim(),
+      rangeHigh: String(r.RANGE_HIGH || '').trim(),
+    };
+    const hasRangeRule = !!(row.rangeLow || row.rangeHigh);
+
+    const errors = [];
+    if (!row.testCode) errors.push('TEST_CODE is missing');
+    if (!row.testName) errors.push('TEST_NAME is missing');
+    if (hasRangeRule && !row.parameterName) errors.push('PARAMETER_NAME is required to add an age/gender range');
+    if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')}`);
+    if (row.ageUnit && !AGE_UNIT_OPTIONS.includes(row.ageUnit)) errors.push(`AGE_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
+    if (row.ageMin && !/^\d+$/.test(row.ageMin)) errors.push('AGE_MIN must be a whole number');
+    if (row.ageMax && !/^\d+$/.test(row.ageMax)) errors.push('AGE_MAX must be a whole number');
+
+    return { ...row, hasRangeRule, valid: errors.length === 0, errors };
+  });
+}
+
+// Loads the universal (clientId null) parameters of the given tests.
+async function loadUniversalParams(testIds, attributes, transaction) {
+  const params = [];
+  for (const ids of chunk(testIds, DB_BATCH)) {
+    params.push(...await ParameterMaster.findAll({ where: { testId: ids, clientId: null }, attributes, transaction }));
+  }
+  return params;
+}
+
 /**
  * Parses an uploaded Excel/CSV and validates each row, without writing
  * anything yet. Columns: TEST_CODE, TEST_NAME, TEST_CATEGORY, SAMPLE_TYPE,
@@ -469,153 +622,214 @@ async function downloadTemplate(req, res) {
  * exists. A row whose RANGE_LOW/RANGE_HIGH are filled in adds an age/gender-
  * specific rule to that parameter (multiple rows can target the same
  * TEST_CODE+PARAMETER_NAME to add several rules). Step 1 of Preview ->
- * Validate -> Commit.
+ * Validate -> Commit. Returns counts for the whole sheet but only a sample
+ * of rows (see MAX_PREVIEW_ROWS) - the commit step re-reads the file itself.
  */
 async function previewUpload(req, res) {
   if (!req.file) return res.status(400).json({ message: 'Excel/CSV file is required' });
 
-  const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const rows = parseUploadRows(req.file.buffer);
 
-  const existingTests = await TestMaster.findAll({
-    include: [{ model: ParameterMaster, where: { clientId: null, active: true }, required: false }],
-  });
+  const codes = [...new Set(rows.map((r) => r.testCode).filter(Boolean))];
+  const existingTests = [];
+  for (const part of chunk(codes, DB_BATCH)) {
+    existingTests.push(...await TestMaster.findAll({ where: { testCode: part }, attributes: ['id', 'testCode'] }));
+  }
+  const codeById = new Map(existingTests.map((t) => [t.id, t.testCode]));
   // Seeded from the database, then updated as rows are walked below - so a
   // brand-new test's first row (which introduces it) doesn't make every one
   // of its *other* rows in this same upload (its other parameters, or extra
   // age/gender range rows for the same parameter) look like they're each
-  // creating ANOTHER new test/parameter too. Mirrors what commitUpload's
-  // real findOrCreate calls do against the live database, row by row.
-  const seenParamsByTestCode = new Map(existingTests.map((t) => [
-    t.testCode, new Set(t.ParameterMasters.map((p) => p.parameterName.toLowerCase())),
-  ]));
+  // creating ANOTHER new test/parameter too. Mirrors what commitUpload does
+  // against the live database.
+  const seenParamsByTestCode = new Map(existingTests.map((t) => [t.testCode, new Set()]));
+  const params = await loadUniversalParams([...codeById.keys()], ['testId', 'parameterName', 'active']);
+  for (const p of params) {
+    if (p.active) seenParamsByTestCode.get(codeById.get(p.testId)).add(p.parameterName.toLowerCase());
+  }
 
-  const preview = rows.map((r, idx) => {
-    const testCode = String(r.TEST_CODE || '').trim();
-    const testName = String(r.TEST_NAME || '').trim();
-    const testCategory = String(r.TEST_CATEGORY || '').trim();
-    const sampleType = String(r.SAMPLE_TYPE || '').trim();
-    const parameterName = String(r.PARAMETER_NAME || '').trim();
-    const unit = String(r.UNIT || '').trim();
-    const method = String(r.METHOD || '').trim();
-    const isInterpretation = String(r.IS_INTERPRETATION || '').trim().toUpperCase() === 'Y';
-    const normalRangeLow = String(r.NORMAL_RANGE_LOW || '').trim();
-    const normalRangeHigh = String(r.NORMAL_RANGE_HIGH || '').trim();
-    const gender = String(r.GENDER || '').trim();
-    const ageMin = String(r.AGE_MIN ?? '').trim();
-    const ageMax = String(r.AGE_MAX ?? '').trim();
-    const ageUnit = String(r.AGE_UNIT || '').trim();
-    const rangeLow = String(r.RANGE_LOW || '').trim();
-    const rangeHigh = String(r.RANGE_HIGH || '').trim();
-    const hasRangeRule = !!(rangeLow || rangeHigh);
-
-    const errors = [];
-    if (!testCode) errors.push('TEST_CODE is missing');
-    if (!testName) errors.push('TEST_NAME is missing');
-    if (hasRangeRule && !parameterName) errors.push('PARAMETER_NAME is required to add an age/gender range');
-    if (gender && !GENDER_OPTIONS.includes(gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')}`);
-    if (ageUnit && !AGE_UNIT_OPTIONS.includes(ageUnit)) errors.push(`AGE_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
-
-    const isNewTest = testCode && !seenParamsByTestCode.has(testCode);
-    const paramAlreadyExists = !isNewTest && parameterName
+  let validRows = 0;
+  const preview = [];
+  let errorsShown = 0;
+  for (const r of rows) {
+    const { testCode, parameterName, hasRangeRule } = r;
+    const isNewTest = !!testCode && !seenParamsByTestCode.has(testCode);
+    const paramAlreadyExists = !isNewTest && !!parameterName
       && seenParamsByTestCode.get(testCode).has(parameterName.toLowerCase());
 
     let action;
     if (hasRangeRule) {
-      action = `Add ${gender || 'Any'} range rule${paramAlreadyExists ? '' : ' (+ new parameter)'}`;
+      action = `Add ${r.gender || 'Any'} range rule${paramAlreadyExists ? '' : ' (+ new parameter)'}`;
     } else if (parameterName) {
       action = paramAlreadyExists ? 'Parameter already exists — skipped' : (isNewTest ? 'New test + parameter' : 'Add parameter');
     } else {
       action = isNewTest ? 'New test (no parameter)' : 'Test already exists';
     }
 
-    // This row's test/parameter now "exist" for every later row in this same
-    // upload, exactly like commitUpload's findOrCreate would see them.
+    // This row's test/parameter now "exist" for every later row in this same upload.
     if (testCode) {
       if (!seenParamsByTestCode.has(testCode)) seenParamsByTestCode.set(testCode, new Set());
       if (parameterName) seenParamsByTestCode.get(testCode).add(parameterName.toLowerCase());
     }
 
-    return {
-      row: idx + 2, // account for header row
-      testCode, testName, testCategory, sampleType, parameterName, unit, method, isInterpretation, normalRangeLow, normalRangeHigh,
-      gender, ageMin, ageMax, ageUnit, rangeLow, rangeHigh,
-      isNewTest,
-      action,
-      valid: errors.length === 0,
-      errors,
-    };
-  });
+    if (r.valid) validRows += 1;
+    const showRow = preview.length < MAX_PREVIEW_ROWS || (!r.valid && errorsShown < MAX_PREVIEW_ERRORS);
+    if (showRow) {
+      if (!r.valid) errorsShown += 1;
+      const { hasRangeRule: _omit, ...shown } = r;
+      preview.push({ ...shown, isNewTest, action });
+    }
+  }
 
   return res.json({
-    totalRows: preview.length,
-    validRows: preview.filter((r) => r.valid).length,
-    invalidRows: preview.filter((r) => !r.valid).length,
+    totalRows: rows.length,
+    validRows,
+    invalidRows: rows.length - validRows,
+    shownRows: preview.length,
     preview,
   });
 }
 
-// POST /api/admin/masters/tests/upload/commit  { rows: [{ testCode, testName, parameterName, unit,
-//   method, normalRangeLow, normalRangeHigh, gender, ageMin, ageMax, ageUnit, rangeLow, rangeHigh }] }
-async function commitUpload(req, res) {
-  const { rows } = req.body;
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return res.status(400).json({ message: 'rows array is required' });
-  }
-
+// Writes the valid rows in bulk: one lookup + one insert per DB_BATCH of
+// tests, parameters and range rules, instead of several queries per row -
+// a 100k-row sheet finishes in seconds-to-minutes rather than hours.
+async function commitRows(rows) {
   const results = { testsCreated: 0, parametersAdded: 0, rangesAdded: 0, skipped: 0, errors: [] };
+  const usable = [];
   for (const row of rows) {
-    const testCode = String(row.testCode || '').trim();
-    const testName = String(row.testName || '').trim();
-    if (!testCode || !testName) {
-      results.errors.push({ testCode, reason: 'Missing TEST_CODE or TEST_NAME' });
-      continue;
-    }
-
-    const [test, testCreated] = await TestMaster.findOrCreate({
-      where: { testCode },
-      defaults: { testName, category: row.testCategory || null, sampleType: row.sampleType || null },
-    });
-    if (testCreated) results.testsCreated += 1;
-
-    const parameterName = String(row.parameterName || '').trim();
-    if (!parameterName) continue;
-
-    const [parameter, paramCreated] = await ParameterMaster.findOrCreate({
-      where: { testId: test.id, parameterName, clientId: null },
-      defaults: {
-        parameterCode: await generateParameterCode(),
-        unit: row.unit, method: row.method, isInterpretation: !!row.isInterpretation,
-        normalRangeLow: row.normalRangeLow, normalRangeHigh: row.normalRangeHigh,
-      },
-    });
-    // Range rules don't apply to a qualitative/free-text interpretation parameter.
-    const hasRangeRule = !parameter.isInterpretation && !!(String(row.rangeLow || '').trim() || String(row.rangeHigh || '').trim());
-    if (paramCreated) results.parametersAdded += 1;
-    else if (!hasRangeRule) results.skipped += 1;
-
-    if (hasRangeRule) {
-      const gender = String(row.gender || '').trim() || 'Any';
-      const ageUnit = String(row.ageUnit || '').trim() || 'Years';
-      const ageMin = row.ageMin === '' || row.ageMin == null ? null : Number(row.ageMin);
-      const ageMax = row.ageMax === '' || row.ageMax == null ? null : Number(row.ageMax);
-      const [, rangeCreated] = await ParameterNormalRange.findOrCreate({
-        where: {
-          parameterId: parameter.id, gender, ageMin, ageMax, ageUnit,
-          normalRangeLow: row.rangeLow || null, normalRangeHigh: row.rangeHigh || null,
-        },
-        defaults: {},
-      });
-      if (rangeCreated) results.rangesAdded += 1;
-      else results.skipped += 1;
-    }
+    if (!row.testCode || !row.testName) results.errors.push({ testCode: row.testCode, reason: 'Missing TEST_CODE or TEST_NAME' });
+    else usable.push(row);
   }
 
-  return res.json(results);
+  await sequelize.transaction(async (transaction) => {
+    // 1. Tests - existing ones by code, the rest created from their first row.
+    const testByCode = new Map();
+    const codes = [...new Set(usable.map((r) => r.testCode))];
+    for (const part of chunk(codes, DB_BATCH)) {
+      for (const t of await TestMaster.findAll({ where: { testCode: part }, attributes: ['id', 'testCode'], transaction })) {
+        testByCode.set(t.testCode, t);
+      }
+    }
+    const newTests = new Map();
+    for (const r of usable) {
+      if (!testByCode.has(r.testCode) && !newTests.has(r.testCode)) {
+        newTests.set(r.testCode, { testCode: r.testCode, testName: r.testName, category: r.testCategory || null, sampleType: r.sampleType || null });
+      }
+    }
+    for (const part of chunk([...newTests.values()], DB_BATCH)) {
+      for (const t of await TestMaster.bulkCreate(part, { transaction, returning: true })) testByCode.set(t.testCode, t);
+    }
+    results.testsCreated = newTests.size;
+
+    // 2. Parameters - matched by exact name within the test, like before.
+    const paramKey = (testId, name) => `${testId}\u0000${name}`;
+    const paramByKey = new Map();
+    const testIds = [...new Set(usable.map((r) => testByCode.get(r.testCode).id))];
+    const existingParams = await loadUniversalParams(testIds, ['id', 'testId', 'parameterName', 'isInterpretation'], transaction);
+    for (const p of existingParams) {
+      const k = paramKey(p.testId, p.parameterName);
+      if (!paramByKey.has(k)) paramByKey.set(k, p);
+    }
+
+    // Parameter codes continue from the highest PARM number in use - read once, not per row.
+    const [[{ maxn }]] = await sequelize.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING("parameterCode" FROM '[0-9]+') AS BIGINT)), 0) AS maxn
+         FROM parameter_master WHERE "parameterCode" ~ '[0-9]'`,
+      { transaction },
+    );
+    let nextCode = Number(maxn) + 1;
+
+    const newParams = new Map();
+    const introducedBy = new Map(); // row object -> true if it created its parameter
+    for (const r of usable) {
+      if (!r.parameterName) continue;
+      const k = paramKey(testByCode.get(r.testCode).id, r.parameterName);
+      if (!paramByKey.has(k) && !newParams.has(k)) {
+        newParams.set(k, {
+          testId: testByCode.get(r.testCode).id, parameterName: r.parameterName, clientId: null,
+          parameterCode: `PARM${String(nextCode++).padStart(3, '0')}`,
+          unit: r.unit, method: r.method, isInterpretation: !!r.isInterpretation,
+          normalRangeLow: r.normalRangeLow, normalRangeHigh: r.normalRangeHigh,
+        });
+        introducedBy.set(r, true);
+      }
+    }
+    for (const part of chunk([...newParams.values()], DB_BATCH)) {
+      const created = await ParameterMaster.bulkCreate(part, { transaction, returning: true });
+      for (const p of created) paramByKey.set(paramKey(p.testId, p.parameterName), p);
+    }
+
+    // 3. Age/gender range rules - skipped when an identical rule already exists.
+    const rangeKey = (parameterId, g, min, max, unit, low, high) => [parameterId, g, min ?? '', max ?? '', unit, low ?? '', high ?? ''].join('\u0000');
+    const rangeRows = [];
+    for (const r of usable) {
+      if (!r.parameterName) continue;
+      const parameter = paramByKey.get(paramKey(testByCode.get(r.testCode).id, r.parameterName));
+      // Range rules don't apply to a qualitative/free-text interpretation parameter.
+      const hasRangeRule = !parameter.isInterpretation && !!(String(r.rangeLow || '').trim() || String(r.rangeHigh || '').trim());
+      if (introducedBy.get(r)) results.parametersAdded += 1;
+      else if (!hasRangeRule) results.skipped += 1;
+      if (hasRangeRule) rangeRows.push({ r, parameter });
+    }
+
+    const seenRanges = new Set();
+    const rangeParamIds = [...new Set(rangeRows.map((x) => x.parameter.id))];
+    for (const ids of chunk(rangeParamIds, DB_BATCH)) {
+      const existing = await ParameterNormalRange.findAll({
+        where: { parameterId: ids },
+        attributes: ['parameterId', 'gender', 'ageMin', 'ageMax', 'ageUnit', 'normalRangeLow', 'normalRangeHigh'],
+        transaction,
+      });
+      for (const e of existing) {
+        seenRanges.add(rangeKey(e.parameterId, e.gender, e.ageMin, e.ageMax, e.ageUnit, e.normalRangeLow, e.normalRangeHigh));
+      }
+    }
+    const newRanges = [];
+    for (const { r, parameter } of rangeRows) {
+      const gender = String(r.gender || '').trim() || 'Any';
+      const ageUnit = String(r.ageUnit || '').trim() || 'Years';
+      const ageMin = r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin);
+      const ageMax = r.ageMax === '' || r.ageMax == null ? null : Number(r.ageMax);
+      const normalRangeLow = r.rangeLow || null;
+      const normalRangeHigh = r.rangeHigh || null;
+      const k = rangeKey(parameter.id, gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh);
+      if (seenRanges.has(k)) { results.skipped += 1; continue; }
+      seenRanges.add(k);
+      newRanges.push({ parameterId: parameter.id, gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh });
+    }
+    for (const part of chunk(newRanges, DB_BATCH)) {
+      await ParameterNormalRange.bulkCreate(part, { transaction });
+    }
+    results.rangesAdded = newRanges.length;
+  });
+
+  return results;
+}
+
+// POST /api/admin/masters/tests/upload/commit - either the same Excel/CSV file
+// as the preview (multipart "file"; only its valid rows are written), or
+// JSON { rows: [{ testCode, testName, parameterName, unit, method,
+// normalRangeLow, normalRangeHigh, gender, ageMin, ageMax, ageUnit, rangeLow, rangeHigh }] }.
+async function commitUpload(req, res) {
+  let rows;
+  if (req.file) {
+    rows = parseUploadRows(req.file.buffer).filter((r) => r.valid);
+  } else {
+    rows = (Array.isArray(req.body?.rows) ? req.body.rows : []).map((row) => ({
+      ...row,
+      testCode: String(row.testCode || '').trim(),
+      testName: String(row.testName || '').trim(),
+      parameterName: String(row.parameterName || '').trim(),
+    }));
+  }
+  if (rows.length === 0) {
+    return res.status(400).json({ message: req.file ? 'The file has no valid rows' : 'rows array is required' });
+  }
+
+  return res.json(await commitRows(rows));
 }
 
 module.exports = {
-  createTest, listTests, updateTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
+  createTest, listTests, updateTest, testUsage, deleteTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup,
 };
