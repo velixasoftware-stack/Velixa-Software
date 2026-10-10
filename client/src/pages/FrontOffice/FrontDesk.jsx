@@ -3,6 +3,7 @@ import api from '../../api/client';
 import SearchSelect from '../../components/SearchSelect';
 import BillReceiptSheet from '../../components/BillReceiptSheet';
 import ShareButton from '../../components/ShareButton';
+import ReferralDoctorPicker from '../../components/ReferralDoctorPicker';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -22,7 +23,6 @@ function IconSearch() {
 
 export default function FrontDesk() {
   const [prices, setPrices] = useState([]);
-  const [doctors, setDoctors] = useState([]);
   const [payors, setPayors] = useState([]);
   const [payorId, setPayorId] = useState('');
   const [payorPrices, setPayorPrices] = useState([]);
@@ -40,7 +40,8 @@ export default function FrontDesk() {
   const [showTestResults, setShowTestResults] = useState(false);
   const testBoxRef = useRef(null);
 
-  const [billingType, setBillingType] = useState('DIRECT'); // DIRECT | PAYOR | REFERRAL
+  const [billingType, setBillingType] = useState('DIRECT'); // DIRECT | PAYOR
+  const [referral, setReferral] = useState(false); // ticked = a doctor referred this patient
   const [doctorName, setDoctorName] = useState('');
   const [walkInDate, setWalkInDate] = useState(todayISO());
   const [visitType, setVisitType] = useState('WALK-IN');
@@ -64,7 +65,6 @@ export default function FrontDesk() {
   useEffect(() => {
     api.get('/billing/test-prices').then((r) => setPrices(r.data));
     api.get('/billing/packages').then((r) => setPackages(r.data)).catch(() => setPackages([]));
-    api.get('/doctors').then((r) => setDoctors(r.data));
     api.get('/billing/payors').then((r) => setPayors(r.data));
     api.get('/billing-settings').then((r) => setGstPercent(String(r.data.defaultGstPercent ?? 0)));
   }, []);
@@ -119,7 +119,6 @@ export default function FrontDesk() {
     setBillingType(type);
     if (type !== 'PAYOR') setPayorId('');
     else { setPaymentMode(''); setTransactionNumber(''); }
-    if (type !== 'REFERRAL') setDoctorName('');
   }
 
   function addTest(testId) {
@@ -205,6 +204,10 @@ export default function FrontDesk() {
       setError('Please select a payor for credit billing.');
       return;
     }
+    if (referral && !doctorName.trim()) {
+      setError('Referral is ticked - pick the referring doctor from the list (or tap "Add new doctor"), or untick Referral.');
+      return;
+    }
     if (discountGiven && !remarks.trim()) {
       setError('Remarks are required when a discount is given.');
       return;
@@ -218,7 +221,7 @@ export default function FrontDesk() {
       const payload = {
         testIds: selectedTests,
         packageIds: selectedPackages,
-        referredDoctorName: doctorName || undefined,
+        referredDoctorName: referral ? doctorName.trim() : undefined,
         walkInDate,
         visitType,
         priority,
@@ -259,6 +262,7 @@ export default function FrontDesk() {
     setSelectedPackages([]);
     setBarcodes({});
     setBillingType('DIRECT');
+    setReferral(false);
     setDoctorName('');
     setPayorId('');
     setDiscount('0');
@@ -270,7 +274,6 @@ export default function FrontDesk() {
     setTransactionNumber('');
     setRemarks('');
     setWalkInDate(todayISO());
-    api.get('/doctors').then((r) => setDoctors(r.data));
   }
 
   if (bill) {
@@ -293,7 +296,6 @@ export default function FrontDesk() {
         <div className="segmented-toggle">
           <button type="button" className={billingType === 'DIRECT' ? 'active' : ''} onClick={() => handleBillingTypeChange('DIRECT')}>Direct</button>
           <button type="button" className={billingType === 'PAYOR' ? 'active' : ''} onClick={() => handleBillingTypeChange('PAYOR')}>Credit</button>
-          <button type="button" className={billingType === 'REFERRAL' ? 'active' : ''} onClick={() => handleBillingTypeChange('REFERRAL')}>Referral</button>
         </div>
 
         {billingType === 'DIRECT' && (
@@ -316,25 +318,6 @@ export default function FrontDesk() {
             <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 0, marginBottom: 14 }}>
               Tests below will be priced at this credit client's negotiated rate and invoiced to them on their own
               billing cycle (monthly or weekly) instead of the patient paying now.
-            </p>
-          </>
-        )}
-
-        {billingType === 'REFERRAL' && (
-          <>
-            <label style={{ maxWidth: 340 }}><span>Referred By (Doctor)</span>
-              <input
-                list="doctor-suggestions"
-                value={doctorName}
-                onChange={(e) => setDoctorName(e.target.value)}
-                placeholder="Doctor's name"
-              />
-              <datalist id="doctor-suggestions">
-                {doctors.map((d) => <option key={d.id} value={d.name} />)}
-              </datalist>
-            </label>
-            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: -10, marginBottom: 14 }}>
-              The patient still pays at the counter; the doctor is recorded for commission tracking.
             </p>
           </>
         )}
@@ -406,6 +389,8 @@ export default function FrontDesk() {
               <option value="URGENT">Urgent</option>
             </select>
           </label>
+          {/* Works with Direct and Credit billing alike - it only records who referred the patient. */}
+          <ReferralDoctorPicker enabled={referral} onToggle={setReferral} value={doctorName} onChange={setDoctorName} />
         </div>
       </div>
 
