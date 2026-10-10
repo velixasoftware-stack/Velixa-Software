@@ -1444,9 +1444,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .front-desk .fd-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 10px; align-items: start; }
 .front-desk .fd-columns > .card { margin-bottom: 0; height: 100%; }
 .front-desk .step-heading { font-size: 14px; margin-bottom: 8px; }
-.front-desk .bill-items-box { padding: 10px; margin-bottom: 10px; }
+.front-desk .bill-items-box { padding: 10px; margin-bottom: 0; }
 .front-desk .selected-item-row { padding: 6px 10px; font-size: 13px; gap: 8px; }
-.front-desk .pay-stat-row { gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.front-desk .pay-stat-row { gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 10px; }
 .front-desk .pay-stat-tile { padding: 8px 6px; }
 .front-desk .pay-stat-tile .label { font-size: 10.5px; margin-bottom: 3px; }
 .front-desk .pay-stat-tile .value { font-size: 17px; }

@@ -471,6 +471,12 @@ export default function FrontDesk() {
           )}
         </div>
 
+      </div>
+
+      <div className="card">
+        <h3 className="step-heading">2. Payment</h3>
+
+        {/* Totals sit at the top of Payment, right above how it's being paid. */}
         <div className="pay-stat-row">
           <div className="pay-stat-tile"><div className="label">Gross</div><div className="value">₹{gross}</div></div>
           <div className="pay-stat-tile discount">
@@ -483,10 +489,6 @@ export default function FrontDesk() {
           </div>
           <div className="pay-stat-tile net-payable"><div className="label">Net Payable</div><div className="value">₹{netPayable}</div></div>
         </div>
-      </div>
-
-      <div className="card">
-        <h3 className="step-heading">2. Payment</h3>
 
         {/* Patient / items / net payable are already shown above (Net Payable tile) -
             only the GST split is shown here, and only when the bill carries GST. */}
