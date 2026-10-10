@@ -6,31 +6,30 @@ function initials(name) {
 }
 
 /**
- * "Referred by a doctor" switch + doctor search, inline on the billing page.
- * Suggests this clinic's saved referral doctors (most recently used first);
- * a name that isn't saved yet is offered as "Add new doctor" - the bill
- * request saves it against the clinic (findOrCreateDoctor on the server), so
- * it's suggested from the next bill onwards.
+ * Optional "Referral" field on the billing page, laid out like the fields
+ * beside it. Whatever is typed is the referring doctor (blank = no
+ * referral). While typing it suggests this clinic's saved doctors (most
+ * recently used first); a name not saved yet is saved against the clinic
+ * when the bill is generated (findOrCreateDoctor on the server), so it's
+ * suggested from the next bill on.
  */
-export default function ReferralDoctorPicker({ enabled, onToggle, value, onChange }) {
-  const [query, setQuery] = useState(value || '');
+export default function ReferralDoctorPicker({ value, onChange }) {
   const [doctors, setDoctors] = useState([]);
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
-  const inputRef = useRef(null);
 
-  useEffect(() => { setQuery(value || ''); }, [value]);
+  const typed = (value || '').trim();
 
   // Server-side search, so a clinic with many saved doctors still finds all of them.
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!open) return undefined;
     const timer = setTimeout(() => {
-      api.get('/doctors', { params: query.trim() ? { search: query.trim() } : {} })
+      api.get('/doctors', { params: typed ? { search: typed } : {} })
         .then((r) => setDoctors(r.data))
         .catch(() => setDoctors([]));
     }, 200);
     return () => clearTimeout(timer);
-  }, [query, enabled]);
+  }, [typed, open]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -40,75 +39,40 @@ export default function ReferralDoctorPicker({ enabled, onToggle, value, onChang
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  function toggle() {
-    const next = !enabled;
-    onToggle(next);
-    if (!next) { onChange(''); setQuery(''); }
-    else setTimeout(() => inputRef.current?.focus(), 0);
-  }
-
-  function pick(name) {
-    onChange(name);
-    setQuery(name);
-    setOpen(false);
-  }
-
-  const typed = query.trim();
   const exact = doctors.find((d) => d.name.toLowerCase() === typed.toLowerCase());
-  const selected = value && value === query;
-  const isNew = selected && !exact;
+  const suggestions = exact ? doctors.filter((d) => d !== exact) : doctors;
 
   return (
-    <div className={`referral-picker${enabled ? ' on' : ''}`} ref={boxRef}>
-      <button type="button" className="referral-switch" onClick={toggle} aria-pressed={enabled}>
-        <span className="referral-check" aria-hidden="true">{enabled ? '✓' : ''}</span>
-        <span className="referral-switch-text">
-          <strong>Referral</strong>
-          <small>{enabled ? 'Referred by a doctor' : 'Tick if a doctor referred this patient'}</small>
-        </span>
-      </button>
+    <div className="referral-field" ref={boxRef}>
+      <span>Referral <small className="referral-optional">(optional)</small></span>
+      <div className="referral-input">
+        <span className="referral-input-icon" aria-hidden="true">{typed ? initials(typed) : 'Dr'}</span>
+        <input
+          value={value}
+          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setOpen(false); } }}
+          placeholder="Doctor's name"
+        />
+        {typed && (
+          <button type="button" className="referral-clear" aria-label="Clear referral" onClick={() => { onChange(''); setOpen(false); }}>×</button>
+        )}
+      </div>
+      {typed && !exact && !open && <small className="referral-hint">New doctor - will be saved</small>}
 
-      {enabled && (
-        <div className="referral-search">
-          {selected ? (
-            <div className="referral-chip">
-              <span className="referral-avatar">{initials(value)}</span>
-              <span className="referral-chip-name">{value}</span>
-              {isNew && <span className="referral-new-tag">New · will be saved</span>}
-              <button type="button" aria-label="Change doctor" onClick={() => { onChange(''); setQuery(''); setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}>×</button>
-            </div>
-          ) : (
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); onChange(''); setOpen(true); }}
-              onFocus={() => setOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); if (typed) pick(exact ? exact.name : typed); }
-              }}
-              placeholder="Search or type the doctor's name…"
-            />
-          )}
-
-          {open && !selected && (
-            <div className="referral-results">
-              {doctors.map((d) => (
-                <button type="button" key={d.id} className="referral-option" onClick={() => pick(d.name)}>
-                  <span className="referral-avatar">{initials(d.name)}</span>
-                  <span>
-                    {d.name}
-                    {d.mobile && <small> · {d.mobile}</small>}
-                  </span>
-                </button>
-              ))}
-              {typed && !exact && (
-                <button type="button" className="referral-option add-new" onClick={() => pick(typed)}>
-                  <span className="referral-avatar">+</span>
-                  <span>Add new doctor “{typed}”</span>
-                </button>
-              )}
-              {!typed && doctors.length === 0 && <div className="referral-empty">No saved doctors yet - type a name to add one.</div>}
-            </div>
+      {open && (suggestions.length > 0 || (typed && !exact)) && (
+        <div className="referral-results">
+          {suggestions.map((d) => (
+            <button type="button" key={d.id} className="referral-option" onClick={() => { onChange(d.name); setOpen(false); }}>
+              <span className="referral-avatar">{initials(d.name)}</span>
+              <span>{d.name}{d.mobile && <small> · {d.mobile}</small>}</span>
+            </button>
+          ))}
+          {typed && !exact && (
+            <button type="button" className="referral-option add-new" onClick={() => setOpen(false)}>
+              <span className="referral-avatar">+</span>
+              <span>Add new doctor “{typed}”</span>
+            </button>
           )}
         </div>
       )}

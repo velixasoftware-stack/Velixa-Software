@@ -41,7 +41,6 @@ export default function FrontDesk() {
   const testBoxRef = useRef(null);
 
   const [billingType, setBillingType] = useState('DIRECT'); // DIRECT | PAYOR
-  const [referral, setReferral] = useState(false); // ticked = a doctor referred this patient
   const [doctorName, setDoctorName] = useState('');
   const [walkInDate, setWalkInDate] = useState(todayISO());
   const [visitType, setVisitType] = useState('WALK-IN');
@@ -204,10 +203,6 @@ export default function FrontDesk() {
       setError('Please select a payor for credit billing.');
       return;
     }
-    if (referral && !doctorName.trim()) {
-      setError('Referral is ticked - pick the referring doctor from the list (or tap "Add new doctor"), or untick Referral.');
-      return;
-    }
     if (discountGiven && !remarks.trim()) {
       setError('Remarks are required when a discount is given.');
       return;
@@ -221,7 +216,7 @@ export default function FrontDesk() {
       const payload = {
         testIds: selectedTests,
         packageIds: selectedPackages,
-        referredDoctorName: referral ? doctorName.trim() : undefined,
+        referredDoctorName: doctorName.trim() || undefined,
         walkInDate,
         visitType,
         priority,
@@ -262,7 +257,6 @@ export default function FrontDesk() {
     setSelectedPackages([]);
     setBarcodes({});
     setBillingType('DIRECT');
-    setReferral(false);
     setDoctorName('');
     setPayorId('');
     setDiscount('0');
@@ -389,8 +383,8 @@ export default function FrontDesk() {
               <option value="URGENT">Urgent</option>
             </select>
           </label>
-          {/* Works with Direct and Credit billing alike - it only records who referred the patient. */}
-          <ReferralDoctorPicker enabled={referral} onToggle={setReferral} value={doctorName} onChange={setDoctorName} />
+          {/* Optional - works with Direct and Credit billing alike; it only records who referred the patient. */}
+          <ReferralDoctorPicker value={doctorName} onChange={setDoctorName} />
         </div>
       </div>
 
