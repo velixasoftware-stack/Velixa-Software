@@ -4,8 +4,10 @@ import { useAuth } from '../context/AuthContext';
 export default function ProtectedRoute({ type, roles, children }) {
   const { auth } = useAuth();
 
-  if (!auth) return <Navigate to="/" replace />;
-  if (auth.user.type !== type) return <Navigate to="/" replace />;
+  // Chief Admin pages send a signed-out visitor to the separate Chief Admin login.
+  const loginPath = type === 'CHIEF_ADMIN' ? '/chief-admin/login' : '/';
+  if (!auth) return <Navigate to={loginPath} replace />;
+  if (auth.user.type !== type) return <Navigate to={loginPath} replace />;
 
   const userRoles = auth.user.roles || [];
   if (roles && !userRoles.includes('ADMIN') && !roles.some((r) => userRoles.includes(r))) {

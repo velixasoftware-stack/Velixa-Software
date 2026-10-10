@@ -1379,3 +1379,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .lab-audit-table td { vertical-align: top; }
 .lab-audit-table .audit-cell { white-space: nowrap; font-size: 12px; }
 .audit-by { font-size: 10.5px; color: #64748b; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Small link at the bottom of the login card (client <-> Chief Admin login). */
+.login-switch { margin-top: 14px; text-align: center; font-size: 12px; }
+.login-switch a { color: #64748b; text-decoration: none; border-bottom: 1px dashed #cbd5e1; }
+.login-switch a:hover { color: var(--brand-teal); border-bottom-color: var(--brand-teal); }
