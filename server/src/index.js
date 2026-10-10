@@ -67,47 +67,51 @@ async function start() {
   await sequelize.sync(); // dev convenience; use real migrations in production
   // sync() above never alters an already-existing table, so a column added to a model after the
   // table was first created has to be added out-of-band here — idempotent, safe to run every boot.
-  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS method VARCHAR(255)');
-  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS sequence INTEGER');
-  for (const col of ['"collectedBy" VARCHAR(255)', '"resultEnteredAt" TIMESTAMPTZ', '"resultEnteredBy" VARCHAR(255)']) {
-    await sequelize.query(`ALTER TABLE sample ADD COLUMN IF NOT EXISTS ${col}`);
-  }
-  for (const col of ['"verifiedBy" VARCHAR(255)', '"releasedBy" VARCHAR(255)', '"revokedBy" VARCHAR(255)']) {
-    await sequelize.query(`ALTER TABLE report ADD COLUMN IF NOT EXISTS ${col}`);
-  }
-  await sequelize.query(`ALTER TABLE client_role_screen ADD COLUMN IF NOT EXISTS "grantedScreens" JSON NOT NULL DEFAULT '[]'`);
-  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
-  await sequelize.query('ALTER TABLE client_test_price ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true');
-  await sequelize.query('ALTER TABLE bill_item ADD COLUMN IF NOT EXISTS "packageId" INTEGER REFERENCES package(id) ON DELETE SET NULL');
-  await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT');
-  await sequelize.query('ALTER TABLE sample ADD COLUMN IF NOT EXISTS "remarksBig" BOOLEAN NOT NULL DEFAULT false');
-  await sequelize.query("ALTER TABLE patient ADD COLUMN IF NOT EXISTS \"ageUnit\" VARCHAR(255) DEFAULT 'Years'");
-  await sequelize.query("ALTER TABLE parameter_normal_range ADD COLUMN IF NOT EXISTS \"ageUnit\" VARCHAR(255) DEFAULT 'Years'");
-  await sequelize.query("ALTER TABLE bill ADD COLUMN IF NOT EXISTS \"visitType\" VARCHAR(255) DEFAULT 'WALK-IN'");
-  await sequelize.query("ALTER TABLE bill ADD COLUMN IF NOT EXISTS \"priority\" VARCHAR(255) DEFAULT 'ROUTINE'");
-  await sequelize.query('ALTER TABLE client_user ADD COLUMN IF NOT EXISTS department VARCHAR(255)');
-  await sequelize.query('ALTER TABLE client_user ADD COLUMN IF NOT EXISTS designation VARCHAR(255)');
-  await sequelize.query("ALTER TABLE client_user ADD COLUMN IF NOT EXISTS \"signaturePath\" VARCHAR(255)");
-  await sequelize.query("ALTER TABLE bill ADD COLUMN IF NOT EXISTS \"dueAmount\" DECIMAL(10,2) NOT NULL DEFAULT 0");
-  await sequelize.query("ALTER TABLE bill_discount ADD COLUMN IF NOT EXISTS \"cancelledAt\" TIMESTAMPTZ");
-  await sequelize.query('ALTER TABLE bill_discount ADD COLUMN IF NOT EXISTS "fromDueAmount" DECIMAL(10,2) NOT NULL DEFAULT 0');
-  await sequelize.query("ALTER TABLE client_user ADD COLUMN IF NOT EXISTS \"isSystemUser\" BOOLEAN NOT NULL DEFAULT false");
-  await sequelize.query("ALTER TABLE client ADD COLUMN IF NOT EXISTS \"qrPaymentRequired\" BOOLEAN NOT NULL DEFAULT true");
-  await sequelize.query('ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS description TEXT');
+  // Sent as one batched query (one round trip) instead of one query per
+  // column - each round trip to a far-away database adds to every cold start.
+  await sequelize.query([
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS method VARCHAR(255)',
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS sequence INTEGER',
+    'ALTER TABLE client_role_screen ADD COLUMN IF NOT EXISTS "grantedScreens" JSON NOT NULL DEFAULT \'[]\'',
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true',
+    'ALTER TABLE client_test_price ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true',
+    'ALTER TABLE bill_item ADD COLUMN IF NOT EXISTS "packageId" INTEGER REFERENCES package(id) ON DELETE SET NULL',
+    'ALTER TABLE sample ADD COLUMN IF NOT EXISTS remarks TEXT',
+    'ALTER TABLE sample ADD COLUMN IF NOT EXISTS "remarksBig" BOOLEAN NOT NULL DEFAULT false',
+    'ALTER TABLE patient ADD COLUMN IF NOT EXISTS "ageUnit" VARCHAR(255) DEFAULT \'Years\'',
+    'ALTER TABLE parameter_normal_range ADD COLUMN IF NOT EXISTS "ageUnit" VARCHAR(255) DEFAULT \'Years\'',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "visitType" VARCHAR(255) DEFAULT \'WALK-IN\'',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "priority" VARCHAR(255) DEFAULT \'ROUTINE\'',
+    'ALTER TABLE client_user ADD COLUMN IF NOT EXISTS department VARCHAR(255)',
+    'ALTER TABLE client_user ADD COLUMN IF NOT EXISTS designation VARCHAR(255)',
+    'ALTER TABLE client_user ADD COLUMN IF NOT EXISTS "signaturePath" VARCHAR(255)',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "dueAmount" DECIMAL(10,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE bill_discount ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMPTZ',
+    'ALTER TABLE bill_discount ADD COLUMN IF NOT EXISTS "fromDueAmount" DECIMAL(10,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE client_user ADD COLUMN IF NOT EXISTS "isSystemUser" BOOLEAN NOT NULL DEFAULT false',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "qrPaymentRequired" BOOLEAN NOT NULL DEFAULT true',
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS description TEXT',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedAt" TIMESTAMPTZ',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedReason" VARCHAR(255)',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "gstPercent" DECIMAL(5,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "cgstAmount" DECIMAL(10,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "sgstAmount" DECIMAL(10,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE bill ADD COLUMN IF NOT EXISTS "taxAmount" DECIMAL(10,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "defaultGstPercent" DECIMAL(5,2) NOT NULL DEFAULT 0',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingName" VARCHAR(255)',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingAddress" VARCHAR(255)',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingMobile" VARCHAR(255)',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingEmail" VARCHAR(255)',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "releasedByUserId" INTEGER',
+    'ALTER TABLE client_user ADD COLUMN IF NOT EXISTS "signatureName" VARCHAR(255)',
+    'ALTER TABLE sample ADD COLUMN IF NOT EXISTS "collectedBy" VARCHAR(255)',
+    'ALTER TABLE sample ADD COLUMN IF NOT EXISTS "resultEnteredAt" TIMESTAMPTZ',
+    'ALTER TABLE sample ADD COLUMN IF NOT EXISTS "resultEnteredBy" VARCHAR(255)',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "verifiedBy" VARCHAR(255)',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "releasedBy" VARCHAR(255)',
+    'ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedBy" VARCHAR(255)',
+  ].join(';\n'));
   await sequelize.query("ALTER TYPE enum_report_status ADD VALUE IF NOT EXISTS 'REVOKED'");
-  await sequelize.query('ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedAt" TIMESTAMPTZ');
-  await sequelize.query('ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedReason" VARCHAR(255)');
-  await sequelize.query('ALTER TABLE bill ADD COLUMN IF NOT EXISTS "gstPercent" DECIMAL(5,2) NOT NULL DEFAULT 0');
-  await sequelize.query('ALTER TABLE bill ADD COLUMN IF NOT EXISTS "cgstAmount" DECIMAL(10,2) NOT NULL DEFAULT 0');
-  await sequelize.query('ALTER TABLE bill ADD COLUMN IF NOT EXISTS "sgstAmount" DECIMAL(10,2) NOT NULL DEFAULT 0');
-  await sequelize.query('ALTER TABLE bill ADD COLUMN IF NOT EXISTS "taxAmount" DECIMAL(10,2) NOT NULL DEFAULT 0');
-  await sequelize.query('ALTER TABLE client ADD COLUMN IF NOT EXISTS "defaultGstPercent" DECIMAL(5,2) NOT NULL DEFAULT 0');
-  await sequelize.query('ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingName" VARCHAR(255)');
-  await sequelize.query('ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingAddress" VARCHAR(255)');
-  await sequelize.query('ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingMobile" VARCHAR(255)');
-  await sequelize.query('ALTER TABLE client ADD COLUMN IF NOT EXISTS "brandingEmail" VARCHAR(255)');
-  await sequelize.query('ALTER TABLE report ADD COLUMN IF NOT EXISTS "releasedByUserId" INTEGER');
-  await sequelize.query('ALTER TABLE client_user ADD COLUMN IF NOT EXISTS "signatureName" VARCHAR(255)');
   await backfillSystemUsers();
   await expireOverdueSubscriptions();
   setInterval(() => {
