@@ -7,6 +7,29 @@ function formatDateTime(iso) {
   });
 }
 
+// A package is billed as one line at its price; the tests it includes are
+// listed under it (each has its own sample/barcode for the lab). Items keep
+// their bill order, grouped at the package's first item.
+function receiptLines(items) {
+  const lines = [];
+  const pkgLine = new Map();
+  for (const item of items) {
+    if (!item.Package) { lines.push({ type: 'test', item }); continue; }
+    if (!pkgLine.has(item.Package.id)) {
+      const line = { type: 'package', pkg: item.Package, items: [] };
+      pkgLine.set(item.Package.id, line);
+      lines.push(line);
+    }
+    pkgLine.get(item.Package.id).items.push(item);
+  }
+  return lines;
+}
+
+function itemStatus(item) {
+  const refunded = (item.Refunds || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  return `${item.status === 'CANCELLED' ? 'Cancelled' : 'Active'}${refunded > 0 ? ` (₹${refunded.toFixed(2)} refunded)` : ''}`;
+}
+
 // The printable Bill/Receipt layout - shared verbatim between Front Desk
 // (right after a bill is generated) and Orders' "Print Bill" button, so the
 // two can never drift into different-looking receipts again.
@@ -58,20 +81,37 @@ export default function BillReceiptSheet({ bill }) {
         <table className="bill-receipt-table">
           <thead><tr><th>S.No</th><th>Service Name</th><th>Barcode</th><th>Amount</th><th>Status</th></tr></thead>
           <tbody>
-            {bill.BillItems.map((item, i) => {
-              const refunded = (item.Refunds || []).reduce((sum, r) => sum + Number(r.amount), 0);
+            {receiptLines(bill.BillItems).map((line, i) => {
+              const cancelledStyle = { textDecoration: 'line-through', color: '#94a3b8' };
+              if (line.type === 'package') {
+                const allCancelled = line.items.every((it) => it.status === 'CANCELLED');
+                return [
+                  <tr key={`pkg-${line.pkg.id}-${line.items[0].id}`}>
+                    <td>{i + 1}</td>
+                    <td style={allCancelled ? cancelledStyle : undefined}><strong>{line.pkg.packageName}</strong> (Package)</td>
+                    <td />
+                    <td>₹{line.items.reduce((s, it) => s + Number(it.price), 0).toFixed(2)}</td>
+                    <td>{allCancelled ? 'Cancelled' : 'Active'}</td>
+                  </tr>,
+                  ...line.items.map((item) => (
+                    <tr key={item.id} style={{ fontSize: '0.92em' }}>
+                      <td />
+                      <td style={item.status === 'CANCELLED' ? cancelledStyle : { color: '#475569' }}>↳ {item.TestMaster?.testName}</td>
+                      <td>{item.Sample?.barcode}</td>
+                      <td style={{ color: '#94a3b8' }}>Included</td>
+                      <td>{itemStatus(item)}</td>
+                    </tr>
+                  )),
+                ];
+              }
+              const { item } = line;
               return (
                 <tr key={item.id}>
                   <td>{i + 1}</td>
-                  <td style={item.status === 'CANCELLED' ? { textDecoration: 'line-through', color: '#94a3b8' } : undefined}>
-                    {item.TestMaster?.testName}
-                  </td>
+                  <td style={item.status === 'CANCELLED' ? cancelledStyle : undefined}>{item.TestMaster?.testName}</td>
                   <td>{item.Sample?.barcode}</td>
                   <td>₹{item.price}</td>
-                  <td>
-                    {item.status === 'CANCELLED' ? 'Cancelled' : 'Active'}
-                    {refunded > 0 && ` (₹${refunded.toFixed(2)} refunded)`}
-                  </td>
+                  <td>{itemStatus(item)}</td>
                 </tr>
               );
             })}

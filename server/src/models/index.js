@@ -727,6 +727,12 @@ BillItem.belongsTo(Bill, { foreignKey: 'billId' });
 TestMaster.hasMany(BillItem, { foreignKey: 'testId' });
 BillItem.belongsTo(TestMaster, { foreignKey: 'testId' });
 
+// Set when the item was billed as part of a package - each of the package's
+// tests is its own BillItem (own sample/report), carrying a share of the
+// package price. Null for a test billed on its own.
+Package.hasMany(BillItem, { foreignKey: 'packageId' });
+BillItem.belongsTo(Package, { foreignKey: 'packageId' });
+
 BillItem.hasOne(Sample, { foreignKey: 'billItemId' });
 Sample.belongsTo(BillItem, { foreignKey: 'billItemId' });
 

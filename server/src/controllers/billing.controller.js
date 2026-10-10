@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Bill, BillItem, Refund, BillDiscount, DuePayment, ClientTestPrice, TestMaster, Sample, Report, Patient,
-  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName,
+  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName, Package,
 } = require('../models');
 const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
@@ -45,7 +45,7 @@ const billIncludes = [
   Patient,
   ReferralDoctor,
   Payor,
-  { model: BillItem, include: [TestMaster, { model: Sample, include: [Report] }, Refund] },
+  { model: BillItem, include: [TestMaster, { model: Sample, include: [Report] }, Refund, { model: Package, attributes: ['id', 'packageCode', 'packageName', 'price'] }] },
   BillDiscount,
   DuePayment,
 ];
@@ -63,12 +63,14 @@ async function createBill(req, res) {
   const { clientId, id: userId } = req.user;
   const {
     patientId, umr, name, age, ageUnit, gender, mobile, email, address,
-    testIds, referredDoctorName, walkInDate, discount, paymentMode, visitAddress, transactionNumber, remarks, payorId,
+    testIds, packageIds, referredDoctorName, walkInDate, discount, paymentMode, visitAddress, transactionNumber, remarks, payorId,
     visitType, priority, amountCollected, gstPercent, barcodes,
   } = req.body;
 
-  if (!Array.isArray(testIds) || testIds.length === 0) {
-    return res.status(400).json({ message: 'At least one testId is required' });
+  const testIdList = Array.isArray(testIds) ? testIds.map(Number).filter(Boolean) : [];
+  const packageIdList = Array.isArray(packageIds) ? [...new Set(packageIds.map(Number).filter(Boolean))] : [];
+  if (testIdList.length === 0 && packageIdList.length === 0) {
+    return res.status(400).json({ message: 'Select at least one test or package' });
   }
   if ((Number(discount) || 0) > 0 && !remarks?.trim()) {
     return res.status(400).json({ message: 'Remarks are required when a discount is given' });
@@ -86,11 +88,11 @@ async function createBill(req, res) {
     }
   }
 
-  const prices = await ClientTestPrice.findAll({
-    where: { clientId, testId: testIds },
+  const prices = testIdList.length === 0 ? [] : await ClientTestPrice.findAll({
+    where: { clientId, testId: testIdList },
     include: [TestMaster],
   });
-  if (prices.length !== testIds.length) {
+  if (prices.length !== testIdList.length) {
     return res.status(400).json({ message: 'Price not configured for one or more selected tests' });
   }
   const inactive = prices.filter((p) => !p.active || !p.TestMaster?.active);
@@ -103,7 +105,7 @@ async function createBill(req, res) {
   if (payorId) {
     payor = await Payor.findOne({ where: { id: payorId, clientId } });
     if (!payor) return res.status(400).json({ message: 'Selected payor not found' });
-    const payorPrices = await PayorTestPrice.findAll({ where: { payorId: payor.id, testId: testIds } });
+    const payorPrices = await PayorTestPrice.findAll({ where: { payorId: payor.id, testId: testIdList } });
     payorPriceByTestId = new Map(payorPrices.map((p) => [p.testId, Number(p.price)]));
   }
 
@@ -112,12 +114,69 @@ async function createBill(req, res) {
     return Number(p.price);
   }
 
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  // One BillItem per test either way - a test picked on its own, or each test
+  // of a picked package (so every test still gets its own sample and report).
+  const lines = prices.map((p) => ({
+    testId: p.testId, price: chargedPriceFor(p), originalPrice: Number(p.price), packageId: null,
+  }));
+
+  if (packageIdList.length) {
+    const packages = await Package.findAll({
+      where: { id: packageIdList, clientId, active: true },
+      include: [TestMaster],
+    });
+    if (packages.length !== packageIdList.length) {
+      return res.status(400).json({ message: 'One or more selected packages are not available' });
+    }
+    const pkgTestIds = packages.flatMap((pkg) => pkg.TestMasters.map((t) => t.id));
+    const pkgTestPrices = await ClientTestPrice.findAll({ where: { clientId, testId: pkgTestIds } });
+    const stdPriceByTestId = new Map(pkgTestPrices.map((p) => [p.testId, p]));
+
+    // A test may appear on a bill only once - not both on its own and in a
+    // package, nor in two packages - or its sample/report would be duplicated.
+    const onBill = new Map(prices.map((p) => [p.testId, 'selected on its own']));
+    for (const pkg of packages) {
+      for (const t of pkg.TestMasters) {
+        if (!t.active || stdPriceByTestId.get(t.id)?.active === false) {
+          return res.status(400).json({ message: `Package ${pkg.packageName} contains an inactive test: ${t.testName}` });
+        }
+        if (onBill.has(t.id)) {
+          return res.status(400).json({ message: `${t.testName} is in package ${pkg.packageName} and also ${onBill.get(t.id)} - remove one of them` });
+        }
+        onBill.set(t.id, `in package ${pkg.packageName}`);
+      }
+      if (pkg.TestMasters.length === 0) {
+        return res.status(400).json({ message: `Package ${pkg.packageName} has no tests` });
+      }
+
+      // The package price is shared across its tests in proportion to their
+      // standard prices (evenly when none are priced), and the last test
+      // takes the rounding remainder - so the items add up to exactly the
+      // package price, and test-wise revenue/refunds still work per test.
+      const pkgPrice = Number(pkg.price);
+      const weights = pkg.TestMasters.map((t) => Number(stdPriceByTestId.get(t.id)?.price) || 0);
+      const weightSum = weights.reduce((s, w) => s + w, 0);
+      let allocated = 0;
+      pkg.TestMasters.forEach((t, i) => {
+        const isLast = i === pkg.TestMasters.length - 1;
+        const share = isLast
+          ? round2(pkgPrice - allocated)
+          : round2(weightSum > 0 ? pkgPrice * weights[i] / weightSum : pkgPrice / pkg.TestMasters.length);
+        allocated = round2(allocated + share);
+        lines.push({
+          testId: t.id, price: share, originalPrice: weights[i] || share, packageId: pkg.id,
+        });
+      });
+    }
+  }
+
   const doctor = referredDoctorName ? await findOrCreateDoctor(clientId, referredDoctorName) : null;
   const discountAmount = Number(discount) || 0;
-  const totalAmount = prices.reduce((sum, p) => sum + chargedPriceFor(p), 0);
+  const totalAmount = round2(lines.reduce((sum, l) => sum + l.price, 0));
   const taxableAmount = Math.max(0, totalAmount - discountAmount);
   const gstPercentNum = Number(gstPercent) || 0;
-  const round2 = (n) => Math.round(n * 100) / 100;
   const taxAmount = round2(taxableAmount * gstPercentNum / 100);
   const cgstAmount = round2(taxAmount / 2);
   const sgstAmount = round2(taxAmount - cgstAmount);
@@ -159,7 +218,7 @@ async function createBill(req, res) {
   // Guard against duplicate bills from a rapid double-click / double-submit:
   // if the same patient already got a bill for the exact same set of tests
   // within the last 10 seconds, return that bill instead of creating another.
-  const sortedTestIds = [...testIds].map(String).sort();
+  const sortedTestIds = lines.map((l) => String(l.testId)).sort();
   const recentDuplicate = await Bill.findOne({
     where: { clientId, patientId: patient.id, createdAt: { [Op.gte]: new Date(Date.now() - 10000) } },
     include: [{ model: BillItem }],
@@ -197,12 +256,12 @@ async function createBill(req, res) {
         remarks: remarks || null,
       }, { transaction: t });
 
-      for (const p of prices) {
+      for (const line of lines) {
         const billItem = await BillItem.create({
-          billId: bill.id, testId: p.testId, price: chargedPriceFor(p), originalPrice: Number(p.price),
+          billId: bill.id, testId: line.testId, price: line.price, originalPrice: line.originalPrice, packageId: line.packageId,
         }, { transaction: t });
 
-        const manualBarcode = barcodes?.[p.testId]?.toString().trim();
+        const manualBarcode = barcodes?.[line.testId]?.toString().trim();
         const sample = await Sample.create({
           clientId, billItemId: billItem.id,
           barcode: manualBarcode || generateBarcode(),
@@ -582,6 +641,21 @@ async function listTestPrices(req, res) {
   return res.json(data);
 }
 
+// GET /api/billing/packages  (read-only, so Front Office can bill a package)
+// Only active packages whose every test is still active - for this client
+// and in the shared Test Master - since an inactive test can't be billed.
+async function listPackages(req, res) {
+  const { clientId } = req.user;
+  const [packages, prices] = await Promise.all([
+    Package.findAll({ where: { clientId, active: true }, include: [TestMaster], order: [['packageName', 'ASC']] }),
+    ClientTestPrice.findAll({ where: { clientId }, attributes: ['testId', 'active'] }),
+  ]);
+  const clientInactive = new Set(prices.filter((p) => !p.active).map((p) => p.testId));
+  const billable = packages.filter((pkg) => pkg.TestMasters.length > 0
+    && pkg.TestMasters.every((t) => t.active && !clientInactive.has(t.id)));
+  return res.json(billable);
+}
+
 // GET /api/billing/payors  (read-only, so Front Office can attribute a bill to a payor)
 async function listPayors(req, res) {
   const { clientId } = req.user;
@@ -705,7 +779,7 @@ async function shareBill(req, res) {
 }
 
 module.exports = {
-  createBill, getBill, listBills, listTestPrices, listPayors, listPayorTestPrices, cancelBillItem,
+  createBill, getBill, listBills, listTestPrices, listPackages, listPayors, listPayorTestPrices, cancelBillItem,
   applyPostBillingDiscount, cancelPostBillingDiscount, addBillItem, recordDuePayment,
   getBillingSettings, updateBillingSettings, shareBill,
 };

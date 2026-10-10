@@ -33,6 +33,8 @@ export default function FrontDesk() {
   const [searchMessage, setSearchMessage] = useState('');
 
   const [selectedTests, setSelectedTests] = useState([]);
+  const [packages, setPackages] = useState([]);
+  const [selectedPackages, setSelectedPackages] = useState([]); // package ids - each bills all its tests at the package price
   const [barcodes, setBarcodes] = useState({}); // { [testId]: barcode } - optional, per test
   const [testQuery, setTestQuery] = useState('');
   const [showTestResults, setShowTestResults] = useState(false);
@@ -61,6 +63,7 @@ export default function FrontDesk() {
 
   useEffect(() => {
     api.get('/billing/test-prices').then((r) => setPrices(r.data));
+    api.get('/billing/packages').then((r) => setPackages(r.data)).catch(() => setPackages([]));
     api.get('/doctors').then((r) => setDoctors(r.data));
     api.get('/billing/payors').then((r) => setPayors(r.data));
     api.get('/billing-settings').then((r) => setGstPercent(String(r.data.defaultGstPercent ?? 0)));
@@ -124,6 +127,32 @@ export default function FrontDesk() {
     setTestQuery('');
     setShowTestResults(false);
   }
+  // A test can be on a bill only once - not on its own and in a package too.
+  function addPackage(pkg) {
+    const taken = new Map(selectedTests.map((id) => [id, 'already added on its own']));
+    for (const pid of selectedPackages) {
+      const other = packages.find((x) => x.id === pid);
+      for (const t of other?.TestMasters || []) taken.set(t.id, `already in package ${other.packageName}`);
+    }
+    const clash = (pkg.TestMasters || []).find((t) => taken.has(t.id));
+    setTestQuery('');
+    setShowTestResults(false);
+    if (clash) {
+      setError(`${pkg.packageName} can't be added: ${clash.testName} is ${taken.get(clash.id)}.`);
+      return;
+    }
+    setError('');
+    setSelectedPackages((prev) => [...prev, pkg.id]);
+  }
+  function removePackage(id) {
+    setSelectedPackages((prev) => prev.filter((x) => x !== id));
+    const pkg = packages.find((x) => x.id === id);
+    setBarcodes((prev) => {
+      const next = { ...prev };
+      for (const t of pkg?.TestMasters || []) delete next[t.id];
+      return next;
+    });
+  }
   function removeTest(testId) {
     setSelectedTests((prev) => prev.filter((id) => id !== testId));
     setBarcodes((prev) => { const next = { ...prev }; delete next[testId]; return next; });
@@ -133,7 +162,10 @@ export default function FrontDesk() {
   }
 
   const selectedPrices = prices.filter((p) => selectedTests.includes(p.testId));
-  const availablePrices = prices.filter((p) => !selectedTests.includes(p.testId));
+  const packagedTestIds = new Set(packages
+    .filter((pkg) => selectedPackages.includes(pkg.id))
+    .flatMap((pkg) => pkg.TestMasters.map((t) => t.id)));
+  const availablePrices = prices.filter((p) => !selectedTests.includes(p.testId) && !packagedTestIds.has(p.testId));
   const testQueryLower = testQuery.toLowerCase();
   const testSuggestions = availablePrices.filter((p) => (
     p.TestMaster?.testName?.toLowerCase().includes(testQueryLower)
@@ -141,7 +173,14 @@ export default function FrontDesk() {
     || p.shortName?.toLowerCase().includes(testQueryLower)
   ));
 
-  const gross = selectedPrices.reduce((s, p) => s + effectivePrice(p), 0);
+  const chosenPackages = packages.filter((pkg) => selectedPackages.includes(pkg.id));
+  const packageSuggestions = packages.filter((pkg) => !selectedPackages.includes(pkg.id) && (
+    pkg.packageName.toLowerCase().includes(testQueryLower) || pkg.packageCode.toLowerCase().includes(testQueryLower)
+  ));
+  const hasItems = selectedTests.length > 0 || selectedPackages.length > 0;
+
+  const gross = selectedPrices.reduce((s, p) => s + effectivePrice(p), 0)
+    + chosenPackages.reduce((s, pkg) => s + Number(pkg.price), 0);
   const taxableAmount = Math.max(0, gross - (Number(discount) || 0));
   const taxAmount = Math.round(taxableAmount * (Number(gstPercent) || 0)) / 100;
   const cgstAmount = Math.round(taxAmount * 50) / 100;
@@ -178,6 +217,7 @@ export default function FrontDesk() {
     try {
       const payload = {
         testIds: selectedTests,
+        packageIds: selectedPackages,
         referredDoctorName: doctorName || undefined,
         walkInDate,
         visitType,
@@ -216,6 +256,7 @@ export default function FrontDesk() {
     setBill(null);
     resetPatient();
     setSelectedTests([]);
+    setSelectedPackages([]);
     setBarcodes({});
     setBillingType('DIRECT');
     setDoctorName('');
@@ -375,13 +416,20 @@ export default function FrontDesk() {
           <div className="bill-items-search">
             <IconSearch />
             <input
-              placeholder="Search & tap a test to add…"
+              placeholder="Search & tap a test or package to add…"
               value={testQuery}
               onChange={(e) => { setTestQuery(e.target.value); setShowTestResults(true); }}
               onFocus={() => setShowTestResults(true)}
             />
             {showTestResults && (
               <div className="search-select-results" style={{ position: 'absolute', top: '100%', marginTop: 4 }}>
+                {packageSuggestions.slice(0, 15).map((pkg) => (
+                  <div key={`pkg-${pkg.id}`} className="search-select-item" onClick={() => addPackage(pkg)}>
+                    <span className="badge COLLECTED" style={{ marginRight: 6 }}>PACKAGE</span>
+                    {pkg.packageName}
+                    <span style={{ color: '#64748b' }}> · ₹{Number(pkg.price)} · {pkg.TestMasters.length} test(s)</span>
+                  </div>
+                ))}
                 {testSuggestions.slice(0, 30).map((p) => (
                   <div key={p.id} className="search-select-item" onClick={() => addTest(p.testId)}>
                     {p.TestMaster?.testName}
@@ -389,13 +437,44 @@ export default function FrontDesk() {
                     <span style={{ color: '#64748b' }}> · ₹{effectivePrice(p)}</span>
                   </div>
                 ))}
-                {testSuggestions.length === 0 && <div className="search-select-item search-select-empty">No matching tests</div>}
+                {testSuggestions.length === 0 && packageSuggestions.length === 0 && <div className="search-select-item search-select-empty">No matching tests or packages</div>}
               </div>
             )}
           </div>
 
-          {selectedPrices.length > 0 && (
+          {(selectedPrices.length > 0 || chosenPackages.length > 0) && (
             <div className="selected-items-list">
+              {/* The package is billed as one line at its own price; each test it
+                  includes goes to the lab as its own sample, so each gets a barcode box. */}
+              {chosenPackages.map((pkg) => (
+                <div key={`pkg-${pkg.id}`}>
+                  <div className="selected-item-row">
+                    <span>
+                      <span className="badge COLLECTED" style={{ marginRight: 6 }}>PACKAGE</span>
+                      <strong>{pkg.packageName}</strong>
+                      <span style={{ color: '#64748b', fontSize: 12 }}> · {pkg.TestMasters.length} test(s) included</span>
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      ₹{Number(pkg.price)}
+                      <button type="button" onClick={() => removePackage(pkg.id)}>Remove</button>
+                    </span>
+                  </div>
+                  {pkg.TestMasters.map((t) => (
+                    <div className="selected-item-row" key={`pkg-${pkg.id}-t-${t.id}`} style={{ paddingLeft: 28, background: '#f8fafc' }}>
+                      <span style={{ fontSize: 13 }}>↳ {t.testName}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <input
+                          value={barcodes[t.id] || ''}
+                          onChange={(e) => setBarcode(t.id, e.target.value)}
+                          placeholder="Barcode (optional, scan or type)"
+                          style={{ width: 190 }}
+                        />
+                        <span style={{ fontSize: 12, color: '#94a3b8', minWidth: 70 }}>In package</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
               {selectedPrices.map((p) => (
                 <div className="selected-item-row" key={p.id}>
                   <span>{p.TestMaster?.testName}</span>
@@ -413,7 +492,7 @@ export default function FrontDesk() {
               ))}
             </div>
           )}
-          {selectedPrices.length > 0 && (
+          {hasItems && (
             <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0' }}>
               Barcode is optional — leave blank to assign one automatically. If you scan/enter one now, that
               test skips straight to result entry (no separate "Collect Sample" step needed in the Lab screen).
@@ -505,7 +584,7 @@ export default function FrontDesk() {
           </label>
         </div>
         {error && <p className="error-text">{error}</p>}
-        <button onClick={handleGenerateBill} disabled={generating || selectedTests.length === 0 || (!isCredit && collectingNow > 0 && !paymentMode)}>{generating ? 'Generating…' : 'Generate Bill'}</button>
+        <button onClick={handleGenerateBill} disabled={generating || !hasItems || (!isCredit && collectingNow > 0 && !paymentMode)}>{generating ? 'Generating…' : 'Generate Bill'}</button>
       </div>
     </div>
   );

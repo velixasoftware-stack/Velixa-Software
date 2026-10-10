@@ -11,6 +11,7 @@ router.use(authenticate, requireActiveSubscription);
 // The test-price list is also needed by Manager from the Edit Order screen
 // (adding a test to an already-billed order), so it isn't Front-Office-only.
 router.get('/test-prices', requireRole(ROLES.FRONT_OFFICE, ROLES.MANAGER), billingCtrl.listTestPrices);
+router.get('/packages', requireRole(ROLES.FRONT_OFFICE), billingCtrl.listPackages);
 router.get('/payors', requireRole(ROLES.FRONT_OFFICE), billingCtrl.listPayors);
 router.get('/payors/:id/test-prices', requireRole(ROLES.FRONT_OFFICE), billingCtrl.listPayorTestPrices);
 router.post('/bills', requireRole(ROLES.FRONT_OFFICE), billingCtrl.createBill);
