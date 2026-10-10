@@ -16,9 +16,17 @@ export default function TestRemoval() {
   const [deleting, setDeleting] = useState(null); // { test, usage } while the delete popup is open
   const [deleteBusy, setDeleteBusy] = useState(false);
 
+  const [selected, setSelected] = useState(() => new Set()); // test ids ticked for a bulk action
+  const [bulkBusy, setBulkBusy] = useState(''); // the bulk action running, if any
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [skipped, setSkipped] = useState([]); // tests a bulk delete couldn't remove, with why
+
   async function load() {
     const { data } = await api.get('/admin/masters/tests');
     setTests(data);
+    // Drop selections for tests that no longer exist (e.g. just deleted).
+    const ids = new Set(data.map((t) => t.id));
+    setSelected((prev) => new Set([...prev].filter((id) => ids.has(id))));
   }
   useEffect(() => { load(); }, []);
 
@@ -32,6 +40,50 @@ export default function TestRemoval() {
   }, [tests, search, statusFilter]);
 
   const inactiveCount = tests.filter((t) => t.active === false).length;
+
+  // "Select all" works on what's currently shown (search + status filter).
+  const allShownSelected = filtered.length > 0 && filtered.every((t) => selected.has(t.id));
+  function toggleAllShown() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const t of filtered) {
+        if (allShownSelected) next.delete(t.id);
+        else next.add(t.id);
+      }
+      return next;
+    });
+  }
+  function toggleOne(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function runBulk(action) {
+    const testIds = [...selected];
+    if (action === 'deactivate' && !window.confirm(`Mark ${testIds.length} test(s) Inactive?\n\nNo client will be able to bill them. Old bills and reports keep them.`)) return;
+    setError('');
+    setMessage('');
+    setSkipped([]);
+    setBulkBusy(action);
+    try {
+      const { data } = await api.post('/admin/masters/tests/bulk', { action, testIds });
+      const verb = { activate: 'made Active', deactivate: 'made Inactive', delete: 'deleted with their master data' }[action];
+      setMessage(`${data.done} test(s) ${verb}.${data.skipped.length ? ` ${data.skipped.length} could not be deleted - see below.` : ''}`);
+      setSkipped(data.skipped);
+      // Keep the skipped ones ticked so "Make Inactive" can be applied to them next.
+      setSelected(new Set(data.skipped.map((s) => s.id)));
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Bulk action failed');
+    } finally {
+      setBulkBusy('');
+      setBulkDeleteOpen(false);
+    }
+  }
 
   async function setActive(test, active) {
     if (!active && !window.confirm(`Mark "${test.testName}" Inactive?\n\nNo client will be able to bill it. Old bills and reports keep it, and you can make it Active again any time.`)) return;
@@ -107,15 +159,50 @@ export default function TestRemoval() {
           </select>
         </div>
 
+        {selected.size > 0 && (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px',
+            marginBottom: 10, background: '#f1f5f9', borderRadius: 8,
+          }}>
+            <strong style={{ fontSize: 13 }}>{selected.size} selected</strong>
+            <button type="button" className="secondary" disabled={!!bulkBusy} onClick={() => runBulk('deactivate')}>
+              {bulkBusy === 'deactivate' ? 'Working…' : 'Make Inactive'}
+            </button>
+            <button type="button" className="secondary" disabled={!!bulkBusy} onClick={() => runBulk('activate')}>
+              {bulkBusy === 'activate' ? 'Working…' : 'Make Active'}
+            </button>
+            <button type="button" className="danger" disabled={!!bulkBusy} onClick={() => setBulkDeleteOpen(true)}>Delete</button>
+            <button type="button" className="secondary" disabled={!!bulkBusy} onClick={() => setSelected(new Set())}>Clear</button>
+          </div>
+        )}
+
         {error && <p className="error-text">{error}</p>}
         {message && <p style={{ color: '#166534' }}>{message}</p>}
+        {skipped.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <p style={{ fontSize: 13, margin: '0 0 4px' }}>Not deleted (still selected, so you can make them Inactive):</p>
+            <ul style={{ fontSize: 13, margin: 0 }}>
+              {skipped.map((s) => <li key={s.id}><strong>{s.testCode}</strong> {s.testName} — {s.reason}</li>)}
+            </ul>
+          </div>
+        )}
 
         <div className="masters-table-wrap">
           <table className="orders-table">
-            <thead><tr><th>Code</th><th>Test Name</th><th>Group</th><th>Parameters</th><th>Status</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th style={{ width: 30 }}>
+                  <input type="checkbox" title="Select all shown" checked={allShownSelected} onChange={toggleAllShown} style={{ width: 16, height: 16 }} />
+                </th>
+                <th>Code</th><th>Test Name</th><th>Group</th><th>Parameters</th><th>Status</th><th></th>
+              </tr>
+            </thead>
             <tbody>
               {filtered.map((t) => (
                 <tr key={t.id}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleOne(t.id)} style={{ width: 16, height: 16 }} />
+                  </td>
                   <td>{t.testCode}</td>
                   <td className="cell-main">{t.testName}</td>
                   <td>{t.category || 'Uncategorized'}</td>
@@ -133,11 +220,34 @@ export default function TestRemoval() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={6}>No tests found.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={7}>No tests found.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
+
+      {bulkDeleteOpen && (
+        <div className="modal-overlay" onClick={() => !bulkBusy && setBulkDeleteOpen(false)}>
+          <div className="modal-card" style={{ textAlign: 'left', width: 480 }} onClick={(e) => e.stopPropagation()}>
+            <h2>Delete {selected.size} test(s)</h2>
+            <p style={{ fontSize: 14 }}>
+              Each selected test is permanently removed with, for every client, its parameters and normal ranges,
+              client prices, short names, payor prices and package links.
+            </p>
+            <p style={{ fontSize: 14 }}>
+              Tests already on a patient bill, with results entered, or sharing parameters with another test are
+              skipped and listed afterwards - you can make those Inactive instead.
+            </p>
+            <p className="error-text" style={{ marginTop: 0 }}>This cannot be undone.</p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" className="danger" disabled={!!bulkBusy} onClick={() => runBulk('delete')}>
+                {bulkBusy === 'delete' ? 'Deleting…' : `Delete ${selected.size} Permanently`}
+              </button>
+              <button type="button" className="secondary" disabled={!!bulkBusy} onClick={() => setBulkDeleteOpen(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleting && (
         <div className="modal-overlay" onClick={() => !deleteBusy && setDeleting(null)}>

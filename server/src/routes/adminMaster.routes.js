@@ -29,6 +29,7 @@ router.post('/groups', testCtrl.createTestGroup);
 
 router.get('/tests', testCtrl.listTests);
 router.post('/tests', testCtrl.createTest);
+router.post('/tests/bulk', testCtrl.bulkTestAction);
 router.put('/tests/:id', testCtrl.updateTest);
 router.get('/tests/:id/usage', testCtrl.testUsage);
 router.delete('/tests/:id', testCtrl.deleteTest);

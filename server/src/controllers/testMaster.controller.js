@@ -203,6 +203,42 @@ async function deleteTest(req, res) {
   const blocked = deleteBlockReason(usage);
   if (blocked) return res.status(409).json({ message: blocked });
 
+  await destroyTestWithMasterData(test, usage);
+  return res.json({ message: `Test ${test.testCode} and its master data were deleted` });
+}
+
+// POST /api/admin/masters/tests/bulk  { action: 'activate' | 'deactivate' | 'delete', testIds: [...] }
+// (Chief Admin only) - the multi-select / "select all" actions on the Test
+// Removal screen. Each test is handled on its own: a test that can't be
+// deleted is skipped with its reason instead of failing the whole batch.
+async function bulkTestAction(req, res) {
+  const { action } = req.body;
+  const ids = Array.isArray(req.body.testIds) ? [...new Set(req.body.testIds.map(Number).filter(Boolean))] : [];
+  if (!['activate', 'deactivate', 'delete'].includes(action)) return res.status(400).json({ message: 'action must be activate, deactivate or delete' });
+  if (ids.length === 0) return res.status(400).json({ message: 'Select at least one test' });
+
+  const tests = await TestMaster.findAll({ where: { id: ids } });
+  if (action !== 'delete') {
+    await TestMaster.update({ active: action === 'activate' }, { where: { id: tests.map((t) => t.id) } });
+    return res.json({ done: tests.length, skipped: [] });
+  }
+
+  let done = 0;
+  const skipped = [];
+  for (const test of tests) {
+    const usage = await collectTestUsage(test);
+    const reason = deleteBlockReason(usage);
+    if (reason) {
+      skipped.push({ id: test.id, testCode: test.testCode, testName: test.testName, reason });
+      continue;
+    }
+    await destroyTestWithMasterData(test, usage);
+    done += 1;
+  }
+  return res.json({ done, skipped });
+}
+
+async function destroyTestWithMasterData(test, usage) {
   await sequelize.transaction(async (transaction) => {
     const { ownParamIds } = usage;
     if (ownParamIds.length) {
@@ -217,8 +253,6 @@ async function deleteTest(req, res) {
     await PayorTestPrice.destroy({ where: { testId: test.id }, transaction });
     await test.destroy({ transaction });
   });
-
-  return res.json({ message: `Test ${test.testCode} and its master data were deleted` });
 }
 
 // POST /api/masters/tests/:testId/parameters
@@ -830,6 +864,6 @@ async function commitUpload(req, res) {
 }
 
 module.exports = {
-  createTest, listTests, updateTest, testUsage, deleteTest, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
+  createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup,
 };
