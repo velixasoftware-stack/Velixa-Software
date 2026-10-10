@@ -284,24 +284,21 @@ export default function FrontDesk() {
   }
 
   return (
-    <div>
+    <div className="front-desk">
       <div className="card">
-        <span style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Billing Type</span>
-        <div className="segmented-toggle">
-          <button type="button" className={billingType === 'DIRECT' ? 'active' : ''} onClick={() => handleBillingTypeChange('DIRECT')}>Direct</button>
-          <button type="button" className={billingType === 'PAYOR' ? 'active' : ''} onClick={() => handleBillingTypeChange('PAYOR')}>Credit</button>
-        </div>
-
-        {billingType === 'DIRECT' && (
-          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: -10, marginBottom: 14 }}>
-            The patient pays at the counter, at the client's standard test prices.
-          </p>
-        )}
-
-        {billingType === 'PAYOR' && (
-          <>
-            <div style={{ maxWidth: 340, marginBottom: 6 }}>
-              <span style={{ display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Credit Client (corporate / TPA / insurer)</span>
+        {/* Billing type, credit client (if any) and patient search share one row
+            so the whole billing screen fits without scrolling. */}
+        <form onSubmit={handleSearch} className="fd-top-row">
+          <div className="fd-field">
+            <span>Billing Type</span>
+            <div className="segmented-toggle">
+              <button type="button" className={billingType === 'DIRECT' ? 'active' : ''} onClick={() => handleBillingTypeChange('DIRECT')} title="The patient pays at the counter, at the client's standard test prices">Direct</button>
+              <button type="button" className={billingType === 'PAYOR' ? 'active' : ''} onClick={() => handleBillingTypeChange('PAYOR')} title="Priced at the credit client's negotiated rate and invoiced to them on their billing cycle">Credit</button>
+            </div>
+          </div>
+          {billingType === 'PAYOR' && (
+            <div className="fd-field fd-grow">
+              <span>Credit Client (corporate / TPA / insurer)</span>
               <SearchSelect
                 options={payors.map((p) => ({ value: p.id, label: `${p.name} (${p.billingCycle === 'WEEKLY' ? 'Weekly' : 'Monthly'} billing)` }))}
                 value={payorId}
@@ -309,15 +306,8 @@ export default function FrontDesk() {
                 placeholder="Search credit client…"
               />
             </div>
-            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 0, marginBottom: 14 }}>
-              Tests below will be priced at this credit client's negotiated rate and invoiced to them on their own
-              billing cycle (monthly or weekly) instead of the patient paying now.
-            </p>
-          </>
-        )}
-
-        <form onSubmit={handleSearch} className="form-grid" style={{ alignItems: 'end' }}>
-          <label><span>Search by UMR or Mobile</span>
+          )}
+          <label className="fd-grow"><span>Search by UMR or Mobile</span>
             <input
               value={searchValue}
               onChange={(e) => {
@@ -331,12 +321,12 @@ export default function FrontDesk() {
               placeholder="UMR000012 or 98765xxxxx"
             />
           </label>
-          <button type="submit">Search</button>
-          {(patient || searchMessage) && <button type="button" className="secondary" onClick={resetPatient}>Clear</button>}
+          <button type="submit" className="fd-search-btn">Search</button>
+          {(patient || searchMessage) && <button type="button" className="secondary fd-search-btn" onClick={resetPatient}>Clear</button>}
         </form>
-        {searchMessage && <p style={{ color: patient ? '#166534' : '#854d0e', fontSize: 13 }}>{searchMessage}</p>}
+        {searchMessage && <p className="fd-search-msg" style={{ color: patient ? '#166534' : '#854d0e' }}>{searchMessage}</p>}
 
-        <div className="form-grid">
+        <div className="form-grid fd-patient-grid">
           <label><span>Mobile No *</span>
             <input
               value={patientForm.mobile}
@@ -388,6 +378,8 @@ export default function FrontDesk() {
         </div>
       </div>
 
+      {/* Bill items and payment side by side on wide screens (stacked on narrow ones). */}
+      <div className="fd-columns">
       <div className="card">
         <h3 className="step-heading">1. Bill Items <span className="step-hint">— add at least 1 item</span></h3>
 
@@ -472,9 +464,9 @@ export default function FrontDesk() {
             </div>
           )}
           {hasItems && (
-            <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0' }}>
-              Barcode is optional — leave blank to assign one automatically. If you scan/enter one now, that
-              test skips straight to result entry (no separate "Collect Sample" step needed in the Lab screen).
+            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '6px 0 0' }}
+              title='If you scan/enter a barcode now, that test skips straight to result entry (no separate "Collect Sample" step in the Lab screen).'>
+              Barcode optional — blank = auto-assigned; scanned now = ready for result entry.
             </p>
           )}
         </div>
@@ -507,16 +499,16 @@ export default function FrontDesk() {
         )}
 
         {isCredit && (
-          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 0, marginBottom: 14 }}>
-            No payment mode needed — this bill is charged to the credit client and settled later, not paid at the counter.
+          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 0, marginBottom: 10 }}>
+            Credit bill — charged to the credit client and settled later; no payment mode needed.
           </p>
         )}
 
         {!isCredit && netPayable > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }} title='Leave a due balance, recovered later from Orders'>
               <input type="checkbox" style={{ width: 'auto' }} checked={hasDue} onChange={(e) => { setHasDue(e.target.checked); setAmountCollected(''); }} />
-              Patient will pay only part now (leave a due balance, recovered later from Orders)
+              Patient pays only part now (rest stays due)
             </label>
             {hasDue && (
               <div className="form-grid" style={{ alignItems: 'end', marginTop: 8 }}>
@@ -531,7 +523,7 @@ export default function FrontDesk() {
           </div>
         )}
 
-        <div className="form-grid">
+        <div className="form-grid fd-pay-grid">
           {!isCredit && collectingNow > 0 && (
             <label><span>Payment Mode *</span>
               <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)} required>
@@ -563,7 +555,8 @@ export default function FrontDesk() {
           </label>
         </div>
         {error && <p className="error-text">{error}</p>}
-        <button onClick={handleGenerateBill} disabled={generating || !hasItems || (!isCredit && collectingNow > 0 && !paymentMode)}>{generating ? 'Generating…' : 'Generate Bill'}</button>
+        <button className="fd-generate-btn" onClick={handleGenerateBill} disabled={generating || !hasItems || (!isCredit && collectingNow > 0 && !paymentMode)}>{generating ? 'Generating…' : 'Generate Bill'}</button>
+      </div>
       </div>
     </div>
   );
