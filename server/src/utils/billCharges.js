@@ -66,7 +66,38 @@ function withCharges(bill) {
   json.activeDiscount = round2(gross > 0 ? Number(json.discount || 0) * activeGross / gross : 0);
   json.activeTax = round2(gross > 0 ? Number(json.taxAmount || 0) * activeGross / gross : 0);
   json.activeCharge = round2(activeCharge);
+  json.money = moneySummary(json, items, charges);
   return json;
+}
+
+// A plain money story for the receipt: what was billed, what the patient
+// actually paid, what went back, and what the lab kept.
+//
+// paidAmount is "money kept" and older code clamped it at 0 when a refund was
+// too big, so "paid by patient" is rebuilt from the records instead: kept +
+// refunds + post-billing discount handed back - never more than was billed.
+function moneySummary(json, items, charges) {
+  const activePost = (json.BillDiscounts || []).filter((d) => !d.cancelledAt);
+  const postDiscount = round2(activePost.reduce((s, d) => s + Number(d.amount), 0));
+  const postDiscountPaidOut = round2(activePost.reduce((s, d) => s + Number(d.amount) - Number(d.fromDueAmount || 0), 0));
+  const billingDiscount = round2(Math.max(0, Number(json.discount || 0) - postDiscount));
+  const gross = round2(Number(json.totalAmount) || 0);
+  const tax = round2(Number(json.taxAmount) || 0);
+  const billAmount = round2(gross - billingDiscount + tax);
+
+  const refunded = round2(items.reduce((s, i) => s + (charges.get(i.id)?.refunded || 0), 0));
+  const cancelledValue = round2(items.filter((i) => i.status === 'CANCELLED').reduce((s, i) => s + (charges.get(i.id)?.charge || 0), 0));
+  const kept = round2(Number(json.paidAmount) || 0);
+  const due = round2(Number(json.dueAmount) || 0);
+  const paidByPatient = round2(Math.min(kept + refunded + postDiscountPaidOut, Math.max(0, billAmount - due)));
+  const netKept = round2(paidByPatient - refunded - postDiscountPaidOut);
+  return {
+    gross, billingDiscount, tax, billAmount, postDiscount, postDiscountPaidOut,
+    paidByPatient, refunded, cancelledValue, netKept, due,
+    // Refunded more than the cancelled tests were worth after the discount
+    // (only possible on bills cancelled before the refund fix).
+    excessRefund: round2(Math.max(0, refunded - cancelledValue)),
+  };
 }
 
 module.exports = { itemCharges, cancellationSplit, withCharges, round2 };

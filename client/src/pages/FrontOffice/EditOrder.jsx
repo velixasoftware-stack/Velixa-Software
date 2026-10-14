@@ -48,7 +48,6 @@ export default function EditOrder() {
   }, [billId]);
 
   if (!bill) return <p>Loading…</p>;
-  const hasCancelled = bill.BillItems.some((i) => i.status === 'CANCELLED');
 
   const activeTestIds = new Set(bill.BillItems.filter((i) => i.status === 'ACTIVE').map((i) => i.testId));
   const q = testQuery.trim().toLowerCase();
@@ -194,9 +193,33 @@ export default function EditOrder() {
           {/* Once tests are cancelled, Total/Discount show only the remaining
               (active) tests - the cancelled tests' share of the discount went
               with them. */}
-          <div className="review-box-row"><span>Total{hasCancelled ? ' (active tests)' : ''}</span><span>₹{money(hasCancelled ? bill.activeGross : bill.totalAmount)}</span></div>
-          <div className="review-box-row"><span>Discount{hasCancelled ? ' (active tests)' : ''}</span><span>₹{money(hasCancelled ? bill.activeDiscount : bill.discount)}</span></div>
-          <div className="review-box-row"><span>Paid</span><span>₹{bill.paidAmount}</span></div>
+          {bill.money ? (
+            // Same step-by-step money summary as the printed receipt.
+            <>
+              <div className="review-box-row"><span>Total (all tests)</span><span>₹{money(bill.money.gross)}</span></div>
+              <div className="review-box-row"><span>Discount</span><span>₹{money(bill.money.billingDiscount)}</span></div>
+              <div className="review-box-row"><span>Bill Amount</span><span>₹{money(bill.money.billAmount)}</span></div>
+              <div className="review-box-row"><span>Paid by Patient</span><span>₹{money(bill.money.paidByPatient)}</span></div>
+              {bill.money.refunded > 0 && <div className="review-box-row"><span>Refunded</span><span>₹{money(bill.money.refunded)}</span></div>}
+              {(bill.money.refunded > 0 || bill.money.postDiscountPaidOut > 0) && (
+                <div className="review-box-row">
+                  <span>{bill.money.netKept < 0 ? 'Refunded More Than Paid' : 'Amount Kept'}</span>
+                  <span style={{ color: bill.money.netKept < 0 ? '#b91c1c' : undefined, fontWeight: 700 }}>{bill.money.netKept < 0 ? `− ₹${money(-bill.money.netKept)}` : `₹${money(bill.money.netKept)}`}</span>
+                </div>
+              )}
+              {bill.money.excessRefund > 0 && (
+                <div className="review-box-row" style={{ color: '#b45309' }}>
+                  <span>⚠ Over-refunded</span><span>₹{money(bill.money.excessRefund)} more than the cancelled tests' value</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="review-box-row"><span>Total</span><span>₹{bill.totalAmount}</span></div>
+              <div className="review-box-row"><span>Discount</span><span>₹{bill.discount}</span></div>
+              <div className="review-box-row"><span>Paid</span><span>₹{bill.paidAmount}</span></div>
+            </>
+          )}
           <div className="review-box-row">
             <span>Due</span>
             <span style={{ color: Number(bill.dueAmount) > 0 ? '#dc2626' : undefined, fontWeight: 700 }}>₹{bill.dueAmount}</span>

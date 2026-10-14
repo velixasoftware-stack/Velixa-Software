@@ -52,6 +52,11 @@ export default function BillReceiptSheet({ bill }) {
   const useActive = hasCancelled && bill.activeDiscount != null;
   const discountShown = useActive ? Number(bill.activeDiscount).toFixed(2) : bill.discount;
   const taxShown = useActive ? Number(bill.activeTax).toFixed(2) : bill.taxAmount;
+  // Money summary from the server (bill details); a bill fresh from the Front
+  // Desk has no cancellations/refunds yet and uses the simple layout below.
+  const m = bill.money || null;
+  const fmt = (n) => Number(n || 0).toFixed(2);
+  const receivedShown = m ? fmt(m.paidByPatient) : bill.paidAmount;
   // Branding details (set from Report Branding) are what's shown on a bill -
   // deliberately separate from the clientName/address/mobile/email Chief
   // Admin set at client creation, falling back to those only until this
@@ -132,16 +137,54 @@ export default function BillReceiptSheet({ bill }) {
         </table>
 
         <div className="bill-receipt-footer">
-          {Number(bill.paidAmount) > 0 && (
+          {Number(receivedShown) > 0 && (
             <p className="bill-receipt-words">
-              Received with thanks from {bill.Patient?.name} a sum of ₹{bill.paidAmount}/-
+              Received with thanks from {bill.Patient?.name} a sum of ₹{receivedShown}/-
               <br />
-              <strong>{numberToWords(bill.paidAmount).toUpperCase()} ONLY</strong>
+              <strong>{numberToWords(receivedShown).toUpperCase()} ONLY</strong>
               <br />
               Payment Mode: <strong>{bill.paymentMode || (bill.Payor ? 'Credit (billed to payor)' : '—')}</strong>
             </p>
           )}
 
+          {m ? (
+            /* Step-by-step: billed → paid → refunded → kept, so anyone can
+               follow the money (server: utils/billCharges.js moneySummary). */
+            <div className="bill-receipt-summary">
+              <div><span>Total (all tests)</span><strong>₹{fmt(m.gross)}</strong></div>
+              {m.billingDiscount > 0 && <div><span>Discount</span><strong>− ₹{fmt(m.billingDiscount)}</strong></div>}
+              {m.tax > 0 && (
+                <>
+                  <div><span>CGST ({Number(bill.gstPercent) / 2}%)</span><strong>+ ₹{fmt(m.tax / 2)}</strong></div>
+                  <div><span>SGST ({Number(bill.gstPercent) / 2}%)</span><strong>+ ₹{fmt(m.tax / 2)}</strong></div>
+                </>
+              )}
+              <div className="bill-receipt-net"><span>Bill Amount</span><strong>₹{fmt(m.billAmount)}</strong></div>
+              {m.postDiscount > 0 && <div><span>Post-Billing Discount</span><strong>− ₹{fmt(m.postDiscount)}</strong></div>}
+              <div><span>Paid by Patient</span><strong>₹{fmt(m.paidByPatient)}</strong></div>
+              {m.refunded > 0 && (
+                <div>
+                  <span>Refunded (cancelled tests{m.cancelledValue > 0 ? `, worth ₹${fmt(m.cancelledValue)}` : ''})</span>
+                  <strong>− ₹{fmt(m.refunded)}</strong>
+                </div>
+              )}
+              {m.postDiscountPaidOut > 0 && <div><span>Discount Returned</span><strong>− ₹{fmt(m.postDiscountPaidOut)}</strong></div>}
+              {(m.refunded > 0 || m.postDiscountPaidOut > 0) && (
+                <div className={`bill-receipt-net${m.netKept < 0 ? ' bill-receipt-negative' : ''}`}>
+                  <span>{m.netKept < 0 ? 'Refunded More Than Paid' : 'Amount Kept'}</span>
+                  <strong>{m.netKept < 0 ? `− ₹${fmt(-m.netKept)}` : `₹${fmt(m.netKept)}`}</strong>
+                </div>
+              )}
+              {m.due > 0 && <div className="bill-receipt-due"><span>Due Amount</span><strong>₹{fmt(m.due)}</strong></div>}
+              {m.excessRefund > 0 && (
+                <div className="bill-receipt-warning">
+                  ⚠ Refund was ₹{fmt(m.excessRefund)} more than the cancelled tests' value after discount
+                </div>
+              )}
+              <div><span>Payment Mode</span><strong>{bill.paymentMode || (bill.Payor ? 'Credit (billed to payor)' : '—')}</strong></div>
+              {bill.transactionNumber && <div><span>Transaction No</span><strong>{bill.transactionNumber}</strong></div>}
+            </div>
+          ) : (
           <div className="bill-receipt-summary">
             {Number(discountShown) > 0 && <div><span>Discount</span><strong>₹{discountShown}</strong></div>}
             {Number(taxShown) > 0 && (
@@ -160,6 +203,7 @@ export default function BillReceiptSheet({ bill }) {
             <div><span>Payment Mode</span><strong>{bill.paymentMode || (bill.Payor ? 'Credit (billed to payor)' : '—')}</strong></div>
             {bill.transactionNumber && <div><span>Transaction No</span><strong>{bill.transactionNumber}</strong></div>}
           </div>
+          )}
         </div>
       </div>
 
