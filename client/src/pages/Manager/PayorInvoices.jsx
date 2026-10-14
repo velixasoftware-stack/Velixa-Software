@@ -67,9 +67,10 @@ export default function PayorInvoices() {
       <div className="card">
         <h3>Generate Payor Invoice</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
-          Pulls together every test billed on credit under a payor's name during the chosen period into one
-          invoice. The period picker below (month or week) follows that payor's own billing cycle, set on the
-          Payors screen.
+          Pulls together every test billed on credit under a payor's name during the chosen period that isn't
+          on an invoice yet. A period can be invoiced more than once - bills added after an earlier invoice go on
+          the next one; cancelled tests are left out. The period picker below (month or week) follows that payor's
+          own billing cycle, set on the Payors screen.
         </p>
         <form onSubmit={handleGenerate} className="form-grid" style={{ alignItems: 'end' }}>
           <div><span>Payor</span>

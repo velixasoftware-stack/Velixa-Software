@@ -414,7 +414,10 @@ const PayorInvoice = sequelize.define('PayorInvoice', {
   ...AUDIT_FIELDS,
 }, {
   tableName: 'payor_invoice',
-  indexes: [{ unique: true, fields: ['payorId', 'month'] }],
+  // Not unique: a period can have more than one invoice (a bill billed after
+  // that period's invoice was generated goes on a further invoice) - each
+  // invoice only takes bills not already on another one.
+  indexes: [{ name: 'payor_invoice_payor_id_month_idx', fields: ['payorId', 'month'] }],
 });
 
 const PayorInvoiceItem = sequelize.define('PayorInvoiceItem', {

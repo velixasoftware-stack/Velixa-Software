@@ -64,16 +64,17 @@ async function listPendingBills(req, res) {
     : [];
   const invoicedBillIds = new Set(invoicedItems.map((i) => i.billId));
 
+  // Not yet invoiced, and still with at least one active (uncancelled) test.
   const pending = bills
-    .filter((b) => !invoicedBillIds.has(b.id))
+    .filter((b) => !invoicedBillIds.has(b.id) && b.BillItems.some((i) => i.status !== 'CANCELLED'))
     .map((b) => ({
       billId: b.id,
       billNo: b.billNo,
       walkInDate: b.walkInDate,
       patientName: b.Patient?.name || '—',
       umr: b.Patient?.umr || '—',
-      tests: b.BillItems.map((i) => i.TestMaster?.testName || 'Test').join(', '),
-      amount: b.BillItems.reduce((s, i) => s + Number(i.price), 0),
+      tests: b.BillItems.filter((i) => i.status !== 'CANCELLED').map((i) => i.TestMaster?.testName || 'Test').join(', '),
+      amount: b.BillItems.filter((i) => i.status !== 'CANCELLED').reduce((s, i) => s + Number(i.price), 0),
     }));
 
   const total = pending.reduce((s, p) => s + p.amount, 0);
@@ -107,17 +108,25 @@ async function generateInvoice(req, res) {
     ({ fromDate, toDate } = monthRange(month));
   }
 
-  const existing = await PayorInvoice.findOne({ where: { payorId, month: period } });
-  if (existing) return res.status(409).json({ message: `An invoice for ${period} already exists for this payor` });
-
-  const bills = await Bill.findAll({
+  // A period can have several invoices: each takes only the bills in the
+  // period that aren't on an invoice yet (e.g. a bill billed after that
+  // period's first invoice was generated goes on a second one).
+  const periodBills = await Bill.findAll({
     where: { clientId, payorId, walkInDate: { [Op.between]: [fromDate, toDate] } },
     include: [Patient, { model: BillItem, include: [TestMaster] }],
   });
+  const alreadyInvoiced = periodBills.length
+    ? new Set((await PayorInvoiceItem.findAll({ where: { billId: periodBills.map((b) => b.id) }, attributes: ['billId'] })).map((i) => i.billId))
+    : new Set();
+  const bills = periodBills.filter((b) => !alreadyInvoiced.has(b.id));
+  if (periodBills.length > 0 && bills.length === 0) {
+    return res.status(400).json({ message: `Every bill for ${period} is already on an invoice for this payor` });
+  }
 
   const items = [];
   for (const bill of bills) {
-    for (const item of bill.BillItems) {
+    // Cancelled tests aren't billed to the payor.
+    for (const item of bill.BillItems.filter((i) => i.status !== 'CANCELLED')) {
       const original = Number(item.originalPrice ?? item.price);
       const assigned = Number(item.price);
       items.push({
