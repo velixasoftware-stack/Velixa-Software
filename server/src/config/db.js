@@ -12,7 +12,11 @@ const dialectOptions = {
 // after a short pause paid for a brand-new TLS connection to the database -
 // expensive when the database is far from the server. Keep a couple of
 // connections open and reuse them instead.
-const pool = { max: 10, min: 2, idle: 10 * 60 * 1000, acquire: 30000, evict: 60 * 1000 };
+// max is capped (default 5, override with DB_POOL_MAX): Supabase's session
+// pooler allows only 15 clients in total, and during a deploy Render runs the
+// old and new instance side by side - at 10 each, the new one couldn't get a
+// connection at startup ("max clients reached") and the deploy failed.
+const pool = { max: Number(process.env.DB_POOL_MAX) || 5, min: 1, idle: 10 * 60 * 1000, acquire: 30000, evict: 60 * 1000 };
 
 // DATABASE_URL (e.g. Supabase's connection string) takes priority when set;
 // otherwise fall back to the discrete DB_* vars used for local development.
