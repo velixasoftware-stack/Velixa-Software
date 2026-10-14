@@ -312,8 +312,28 @@ const ParameterNormalRange = sequelize.define('ParameterNormalRange', {
   ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - the unit ageMin/ageMax are expressed in (e.g. a "0-7 days" newborn band)
   normalRangeLow: { type: DataTypes.STRING },
   normalRangeHigh: { type: DataTypes.STRING },
+  // Null = the parameter's own rows (Chief Admin's for a universal parameter).
+  // Set = a clinic's private copy of a universal parameter's ranges, used only
+  // for that clinic once it has customised them (ClientParameterOverride).
+  clientId: { type: DataTypes.INTEGER },
   ...AUDIT_FIELDS,
 }, { tableName: 'parameter_normal_range' });
+
+// Marks that a clinic has its own normal ranges for a universal (Chief Admin)
+// parameter: its ranges are then the ParameterNormalRange rows with its
+// clientId, and its printed Normal Range text is held here - so its edits
+// never touch other clinics, and Chief Admin's later changes don't overwrite
+// them. No row = the clinic follows Chief Admin's ranges. See utils/clientRanges.js.
+const ClientParameterOverride = sequelize.define('ClientParameterOverride', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  normalRangeText: { type: DataTypes.TEXT },
+  normalRangeTextMale: { type: DataTypes.TEXT },
+  normalRangeTextFemale: { type: DataTypes.TEXT },
+  ...AUDIT_FIELDS,
+}, {
+  tableName: 'client_parameter_override',
+  indexes: [{ unique: true, fields: ['clientId', 'parameterId'] }],
+});
 
 // A client's own shortcut/abbreviated name for a test (e.g. for quick search
 // or a compact report layout), set per client just like ClientTestPrice.
@@ -795,6 +815,10 @@ ParameterMaster.hasMany(Result, { foreignKey: 'parameterId' });
 Result.belongsTo(ParameterMaster, { foreignKey: 'parameterId' });
 
 ParameterMaster.hasMany(ParameterNormalRange, { foreignKey: 'parameterId', onDelete: 'CASCADE' });
+Client.hasMany(ClientParameterOverride, { foreignKey: { name: 'clientId', allowNull: false }, onDelete: 'CASCADE' });
+ClientParameterOverride.belongsTo(Client, { foreignKey: 'clientId' });
+ParameterMaster.hasMany(ClientParameterOverride, { foreignKey: { name: 'parameterId', allowNull: false }, onDelete: 'CASCADE' });
+ClientParameterOverride.belongsTo(ParameterMaster, { foreignKey: 'parameterId' });
 ParameterNormalRange.belongsTo(ParameterMaster, { foreignKey: 'parameterId' });
 
 Sample.hasOne(Report, { foreignKey: 'sampleId', onDelete: 'CASCADE' });
@@ -867,6 +891,7 @@ module.exports = {
   TestMaster,
   ParameterMaster,
   ParameterNormalRange,
+  ClientParameterOverride,
   ClientTestShortName,
   ClientParameterTrend,
   ClientTestPrice,

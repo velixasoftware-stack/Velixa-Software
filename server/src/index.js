@@ -115,6 +115,8 @@ async function start() {
     'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeText" TEXT',
     'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeTextMale" TEXT',
     'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeTextFemale" TEXT',
+    // A clinic's private copy of a universal parameter's ranges (null = shared rows).
+    'ALTER TABLE parameter_normal_range ADD COLUMN IF NOT EXISTS "clientId" INTEGER REFERENCES client(id) ON DELETE CASCADE',
     // One payor period may now have several invoices - drop the old unique
     // (payorId, month) index and keep a plain one for lookups.
     'DROP INDEX IF EXISTS payor_invoice_payor_id_month',

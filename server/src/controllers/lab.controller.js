@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const {
-  sequelize, Sample, BillItem, TestMaster, ParameterMaster, ParameterNormalRange, Result, Report, Bill, Patient, Client,
+  sequelize, Sample, BillItem, TestMaster, ParameterMaster, Result, Report, Bill, Patient, Client,
   ReferralDoctor, Payor, ClientUser, ClientParameterTrend,
 } = require('../models');
 const { buildParameterInsight } = require('../utils/trendInsights');
@@ -9,6 +9,7 @@ const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 const { getCurrentActor } = require('../utils/auditContext');
 const { fastingPostLunchConflict } = require('../utils/testType');
+const { applyClientRanges } = require('../utils/clientRanges');
 
 // A client doing result entry sees every universal parameter plus whatever
 // parameters it added for itself for that test - never another client's own.
@@ -44,19 +45,11 @@ function buildSampleIncludes(clientId) {
 // truncated columns back onto the wrong/colliding attribute names, silently
 // corrupting the nested rows. Fetching ranges with their own flat query and
 // attaching them in JS sidesteps that entirely.
-async function attachNormalRanges(parameterMasters) {
-  const ids = [...new Set(parameterMasters.map((p) => p.id))];
-  if (ids.length === 0) return;
-  const ranges = await ParameterNormalRange.findAll({ where: { parameterId: ids } });
-  const byParamId = new Map();
-  for (const r of ranges) {
-    const list = byParamId.get(r.parameterId) || [];
-    list.push(r.toJSON ? r.toJSON() : r);
-    byParamId.set(r.parameterId, list);
-  }
-  for (const p of parameterMasters) {
-    p.ParameterNormalRanges = byParamId.get(p.id) || [];
-  }
+// clientId: whose ranges - a clinic that customised a universal parameter
+// gets its own copy (and printed text), otherwise the shared rows. See
+// utils/clientRanges.js.
+async function attachNormalRanges(parameterMasters, clientId) {
+  await applyClientRanges(parameterMasters, clientId);
 }
 
 /**
@@ -82,7 +75,7 @@ async function withResolvedRanges(sampleJson) {
 
   const params = sampleJson.BillItem?.TestMaster?.ParameterMasters;
   if (Array.isArray(params) && params.length > 0) {
-    await attachNormalRanges(params);
+    await attachNormalRanges(params, sampleJson.clientId);
     for (const p of params) {
       const resolved = resolveNormalRange(p, age, gender, ageUnit);
       p.normalRangeLow = resolved.normalRangeLow;
@@ -198,8 +191,9 @@ async function enterResults(req, res) {
   const patient = sample.BillItem?.Bill?.Patient;
 
   for (const r of results) {
-    const parameter = await ParameterMaster.findByPk(r.parameterId, { include: [ParameterNormalRange] });
+    const parameter = await ParameterMaster.findByPk(r.parameterId);
     if (!parameter) continue;
+    await attachNormalRanges([parameter], clientId); // this clinic's ranges decide the abnormal flag
     const range = resolveNormalRange(parameter, patient?.age, patient?.gender, patient?.ageUnit);
     const isAbnormal = isOutOfRange(r.value, range.normalRangeLow, range.normalRangeHigh);
 
@@ -346,7 +340,7 @@ async function getBillReport(req, res) {
   const age = bill.Patient?.age;
   const gender = bill.Patient?.gender;
   const ageUnit = bill.Patient?.ageUnit;
-  await attachNormalRanges(releasedSamples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)));
+  await attachNormalRanges(releasedSamples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)), clientId);
 
   // A signature for a set of released tests: whoever released the most recent
   // of them represents it. Only a user who has actually set up a signature
@@ -470,7 +464,7 @@ async function shareReport(req, res) {
   const age = bill.Patient?.age;
   const gender = bill.Patient?.gender;
   const ageUnit = bill.Patient?.ageUnit;
-  await attachNormalRanges(samples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)));
+  await attachNormalRanges(samples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)), clientId);
 
   const lines = samples.map((s) => {
     const testLine = `${s.BillItem.TestMaster.testName}:`;
@@ -749,7 +743,7 @@ async function getBillTrendReport(req, res) {
   if (samples.length === 0) {
     return res.status(404).json({ message: 'No released reports for this bill yet' });
   }
-  await attachNormalRanges(samples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)));
+  await attachNormalRanges(samples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)), clientId);
 
   // Only parameters this client ticked "Trend" for (Test Parameters screen) -
   // set per parameter, so it applies on every test the parameter is mapped to.

@@ -69,7 +69,8 @@ export default function TestParameters() {
   // Manage ranges: the printed Normal Range boxes, filled from the saved
   // ranges plus the one being typed - saved by the same button as the range.
   const [rangeDraft, setRangeDraft] = useManageRangeDraft(manageParam || NO_PARAM, newRange);
-  const canEditRangeText = !!manageParam?.clientId;
+  // Any parameter: a universal one is edited as this clinic's own copy (server side).
+  const canEditRangeText = true;
   const [rangeError, setRangeError] = useState('');
   const [savingRange, setSavingRange] = useState(false);
 
@@ -210,6 +211,24 @@ export default function TestParameters() {
       setManageParam((prev) => freshTest?.ParameterMasters?.find((p) => p.id === prev.id) || prev);
     } catch (err) {
       setRangeError(err.response?.data?.message || 'Failed to add normal range');
+    } finally {
+      setSavingRange(false);
+    }
+  }
+
+  // Drops this clinic's own copy of a universal parameter's ranges - it
+  // follows Chief Admin's ranges (and their later changes) again.
+  async function resetToChiefAdmin() {
+    if (!window.confirm(`Use Chief Admin's normal ranges for ${manageParam.parameterName} again?\n\nYour clinic's own ranges and printed text for it will be removed.`)) return;
+    setRangeError('');
+    setSavingRange(true);
+    try {
+      await api.delete(`/test-config/parameters/${manageParam.id}/customization`);
+      const data = await loadAll();
+      const freshTest = data.tests.find((t) => t.id === selectedTestId);
+      setManageParam((prev) => freshTest?.ParameterMasters?.find((p) => p.id === prev.id) || prev);
+    } catch (err) {
+      setRangeError(err.response?.data?.message || 'Failed to reset');
     } finally {
       setSavingRange(false);
     }
@@ -359,7 +378,10 @@ It will no longer appear on result entry. Reports already released keep their va
                       </td>
                       <td>{p.unit || '—'}</td>
                       <td><RangeMatrix param={p} /></td>
-                      <td>{p.clientId ? <span className="badge PENDING_COLLECTION">Your Parameter</span> : <span className="badge PAID">Universal</span>}</td>
+                      <td>
+                        {p.clientId ? <span className="badge PENDING_COLLECTION">Your Parameter</span> : <span className="badge PAID">Universal</span>}
+                        {!p.clientId && p.customizedForClient && <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>Your ranges</div>}
+                      </td>
                       <td>
                         {!p.isInterpretation && (
                           <input
@@ -544,6 +566,20 @@ It will no longer appear on result entry. Reports already released keep their va
             <p style={{ fontSize: 13, color: '#64748b' }}>
               Default range: {manageParam.normalRangeLow || '—'} - {manageParam.normalRangeHigh || '—'} (used when no rule below matches).
             </p>
+            {!manageParam.clientId && (
+              // A universal (Chief Admin) parameter: this clinic either follows
+              // Chief Admin's ranges or has its own copy (made on first edit).
+              <div className={`range-source ${manageParam.customizedForClient ? 'own' : 'shared'}`}>
+                {manageParam.customizedForClient ? (
+                  <>
+                    <span><strong>Your clinic's ranges.</strong> Chief Admin's later changes to this parameter don't apply to your clinic.</span>
+                    <button type="button" className="secondary" onClick={resetToChiefAdmin} disabled={savingRange}>Reset to Chief Admin ranges</button>
+                  </>
+                ) : (
+                  <span><strong>Using Chief Admin's ranges.</strong> Adding, removing or changing a range here makes your clinic's own copy - other clinics are not affected.</span>
+                )}
+              </div>
+            )}
             <table>
               <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th></th></tr></thead>
               <tbody>

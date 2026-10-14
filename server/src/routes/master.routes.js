@@ -26,6 +26,7 @@ router.delete('/tests/:testId/parameters/:parameterId', testCtrl.removeParameter
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
 router.put('/parameters/:parameterId/normal-range-text', testCtrl.setNormalRangeText); // printed reference range
+router.delete('/parameters/:parameterId/customization', testCtrl.resetParameterRanges); // back to Chief Admin's ranges
 
 // Client-wise test pricing for the logged-in client
 router.get('/client-test-price', priceCtrl.listPrices);

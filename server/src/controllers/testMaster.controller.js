@@ -7,6 +7,7 @@ const {
 const { sortParameters } = require('../utils/parameterOrder');
 const { normalizeTestType } = require('../utils/testType');
 const { isBillableForClient } = require('../utils/testStatus');
+const { applyClientRanges, ensureClientOverride, resetClientRanges, TEXT_KEYS } = require('../utils/clientRanges');
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Any'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
@@ -52,18 +53,38 @@ async function setNormalRangeText(req, res) {
   const clientId = requesterClientId(req);
   const parameter = await ParameterMaster.findByPk(req.params.parameterId);
   if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
-  if ((parameter.clientId ?? null) !== (clientId ?? null)) {
-    return res.status(403).json({ message: clientId
-      ? 'This is a universal parameter - its printed range is set by Chief Admin'
-      : 'This parameter belongs to a client - it can only be changed from that client' });
-  }
   // Only the boxes sent are changed; a blank box clears that version.
   const updates = {};
-  for (const key of ['normalRangeText', 'normalRangeTextMale', 'normalRangeTextFemale']) {
+  for (const key of TEXT_KEYS) {
     if (key in req.body) updates[key] = req.body[key]?.toString().trim() || null;
+  }
+  // A clinic editing a universal parameter edits its own copy (made now if
+  // needed) - never the shared text other clinics use.
+  if (clientId && parameter.clientId == null) {
+    const result = await sequelize.transaction(async (transaction) => {
+      const { override } = await ensureClientOverride(clientId, parameter, transaction);
+      await override.update(updates, { transaction });
+      return { ...parameter.toJSON(), ...Object.fromEntries(TEXT_KEYS.map((k) => [k, override[k]])), customizedForClient: true };
+    });
+    return res.json(result);
+  }
+  if ((parameter.clientId ?? null) !== (clientId ?? null)) {
+    return res.status(403).json({ message: 'This parameter belongs to a client - it can only be changed from that client' });
   }
   await parameter.update(updates);
   return res.json(parameter);
+}
+
+// DELETE .../parameters/:parameterId/customization  (clinic only)
+// Drops the clinic's own copy of a universal parameter's ranges and printed
+// text - it follows Chief Admin's ranges again (including later changes).
+async function resetParameterRanges(req, res) {
+  const clientId = requesterClientId(req);
+  if (!clientId) return res.status(400).json({ message: 'Only a clinic has its own copy to reset' });
+  const parameter = await ParameterMaster.findByPk(req.params.parameterId);
+  if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+  await sequelize.transaction((transaction) => resetClientRanges(clientId, parameter.id, transaction));
+  return res.json({ message: 'Now using Chief Admin\'s normal ranges' });
 }
 
 // PUT /api/test-config/parameters/:parameterId/trend  { showTrend }
@@ -184,8 +205,9 @@ async function listTests(req, res) {
 
   const tests = await TestMaster.findAll({
     include: [
-      { model: ParameterMaster, where: paramWhere, required: false, include: [ParameterNormalRange] },
-      { model: ParameterMaster, as: 'AssignedParameters', where: paramWhere, required: false, include: [ParameterNormalRange], through: { attributes: [] } },
+      // Ranges are attached below per clinic (applyClientRanges), not included here.
+      { model: ParameterMaster, where: paramWhere, required: false },
+      { model: ParameterMaster, as: 'AssignedParameters', where: paramWhere, required: false, through: { attributes: [] } },
     ],
     order: [['testCode', 'ASC']],
   });
@@ -218,6 +240,10 @@ async function listTests(req, res) {
     delete json.AssignedParameters;
     return json;
   });
+  // Each parameter's ranges + printed text as this requester uses them: Chief
+  // Admin sees the shared rows; a clinic sees its own copy where it has
+  // customised a universal parameter (customizedForClient), else the shared.
+  await applyClientRanges(result.flatMap((t) => t.ParameterMasters), clientId);
   return res.json(result);
 }
 
@@ -550,6 +576,14 @@ async function removeParameter(req, res) {
 async function addNormalRange(req, res) {
   const parameter = await ParameterMaster.findByPk(req.params.parameterId);
   if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+  const clientId = requesterClientId(req);
+  if (clientId && parameter.clientId != null && parameter.clientId !== clientId) {
+    return res.status(403).json({ message: 'This parameter belongs to another client' });
+  }
+  // A clinic adding a range to a universal parameter adds it to its own copy
+  // (made now if needed), never to the ranges other clinics share.
+  const rowClientId = clientId && parameter.clientId == null ? clientId : null;
+  if (rowClientId) await ensureClientOverride(rowClientId, parameter);
 
   const { gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh } = req.body;
   if (gender && !GENDER_OPTIONS.includes(gender)) {
@@ -571,6 +605,7 @@ async function addNormalRange(req, res) {
   const existing = await ParameterNormalRange.findOne({
     where: {
       parameterId: parameter.id,
+      clientId: rowClientId,
       gender: gender || 'Any',
       ageMin: normalizedAgeMin,
       ageMax: normalizedAgeMax,
@@ -583,6 +618,7 @@ async function addNormalRange(req, res) {
 
   const range = await ParameterNormalRange.create({
     parameterId: parameter.id,
+    clientId: rowClientId,
     gender: gender || 'Any',
     ageMin: normalizedAgeMin,
     ageMax: normalizedAgeMax,
@@ -594,8 +630,32 @@ async function addNormalRange(req, res) {
 
 // DELETE /api/masters/parameters/:parameterId/ranges/:rangeId
 async function deleteNormalRange(req, res) {
-  const range = await ParameterNormalRange.findOne({ where: { id: req.params.rangeId, parameterId: req.params.parameterId } });
+  const parameter = await ParameterMaster.findByPk(req.params.parameterId);
+  if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+  let range = await ParameterNormalRange.findOne({ where: { id: req.params.rangeId, parameterId: parameter.id } });
   if (!range) return res.status(404).json({ message: 'Normal range rule not found' });
+  const clientId = requesterClientId(req);
+
+  if (clientId && parameter.clientId == null) {
+    // A clinic removing a range from a universal parameter removes it from its
+    // own copy only: the first time, its copy is made from the shared rows and
+    // the copy of this range is the one removed.
+    await sequelize.transaction(async (transaction) => {
+      const { copyOf } = await ensureClientOverride(clientId, parameter, transaction);
+      if (range.clientId == null) {
+        const copyId = copyOf.get(range.id);
+        if (!copyId) throw Object.assign(new Error('That range is not in your clinic\'s ranges any more - reload and try again'), { status: 404 });
+        range = await ParameterNormalRange.findByPk(copyId, { transaction });
+      } else if (range.clientId !== clientId) {
+        throw Object.assign(new Error('Normal range rule not found'), { status: 404 });
+      }
+      await range.destroy({ transaction });
+    });
+    return res.json({ message: 'Deleted' });
+  }
+  if (clientId && parameter.clientId !== clientId) return res.status(403).json({ message: 'This parameter belongs to another client' });
+  // Chief Admin / a clinic's own parameter: only the parameter's own rows.
+  if (range.clientId != null) return res.status(404).json({ message: 'Normal range rule not found' });
   await range.destroy();
   return res.json({ message: 'Deleted' });
 }
@@ -608,7 +668,8 @@ async function downloadTemplate(req, res) {
   // Chief-Admin-only endpoint - the export covers just the universal catalog,
   // never a client's own private parameters.
   const tests = await TestMaster.findAll({
-    include: [{ model: ParameterMaster, where: { clientId: null, active: true }, required: false, include: [ParameterNormalRange] }],
+    // Only the shared ranges - never a clinic's private copy.
+    include: [{ model: ParameterMaster, where: { clientId: null, active: true }, required: false, include: [{ model: ParameterNormalRange, where: { clientId: null }, required: false }] }],
     order: [['testCode', 'ASC']],
   });
 
@@ -915,7 +976,7 @@ async function commitRows(rows) {
     const rangeParamIds = [...new Set(rangeRows.map((x) => x.parameter.id))];
     for (const ids of chunk(rangeParamIds, DB_BATCH)) {
       const existing = await ParameterNormalRange.findAll({
-        where: { parameterId: ids },
+        where: { parameterId: ids, clientId: null }, // shared rows only - not clinics' copies
         attributes: ['parameterId', 'gender', 'ageMin', 'ageMax', 'ageUnit', 'normalRangeLow', 'normalRangeHigh'],
         transaction,
       });
@@ -970,5 +1031,5 @@ async function commitUpload(req, res) {
 
 module.exports = {
   createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
-  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend, setNormalRangeText,
+  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend, setNormalRangeText, resetParameterRanges,
 };
