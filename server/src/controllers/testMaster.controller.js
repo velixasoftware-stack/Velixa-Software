@@ -44,7 +44,7 @@ async function generateParameterCode() {
   return code;
 }
 
-// PUT .../parameters/:parameterId/normal-range-text  { normalRangeText }
+// PUT .../parameters/:parameterId/normal-range-text  { normalRangeText?, normalRangeTextMale?, normalRangeTextFemale? }
 // The reference range printed on the report for this parameter (blank =
 // print low - high again). A client may only change its own parameters;
 // Chief Admin changes the universal ones (shared by every client).
@@ -57,7 +57,12 @@ async function setNormalRangeText(req, res) {
       ? 'This is a universal parameter - its printed range is set by Chief Admin'
       : 'This parameter belongs to a client - it can only be changed from that client' });
   }
-  await parameter.update({ normalRangeText: req.body.normalRangeText?.toString().trim() || null });
+  // Only the boxes sent are changed; a blank box clears that version.
+  const updates = {};
+  for (const key of ['normalRangeText', 'normalRangeTextMale', 'normalRangeTextFemale']) {
+    if (key in req.body) updates[key] = req.body[key]?.toString().trim() || null;
+  }
+  await parameter.update(updates);
   return res.json(parameter);
 }
 
@@ -363,6 +368,8 @@ async function addParameter(req, res) {
 
   const { parameterName, unit, method, normalRangeLow, normalRangeHigh, description, isInterpretation, normalRanges } = req.body;
   const normalRangeText = req.body.normalRangeText?.toString().trim() || null;
+  const normalRangeTextMale = req.body.normalRangeTextMale?.toString().trim() || null;
+  const normalRangeTextFemale = req.body.normalRangeTextFemale?.toString().trim() || null;
   if (!parameterName) return res.status(400).json({ message: 'parameterName is required' });
 
   if (normalRanges !== undefined) {
@@ -393,6 +400,8 @@ async function addParameter(req, res) {
     await existing.update({
       active: true, unit: unit ?? existing.unit, method: method ?? existing.method,
       normalRangeText: normalRangeText ?? existing.normalRangeText,
+      normalRangeTextMale: normalRangeTextMale ?? existing.normalRangeTextMale,
+      normalRangeTextFemale: normalRangeTextFemale ?? existing.normalRangeTextFemale,
       sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
     });
     return res.status(200).json(existing);
@@ -404,7 +413,7 @@ async function addParameter(req, res) {
   const seqGiven = req.body.sequence !== undefined && req.body.sequence !== '' && req.body.sequence !== null;
   const maxSeq = seqGiven ? null : await ParameterMaster.max('sequence', { where: { testId: test.id } });
   const parameter = await ParameterMaster.create({
-    testId: test.id, clientId, parameterCode, parameterName, unit, method, normalRangeLow, normalRangeHigh, normalRangeText, description,
+    testId: test.id, clientId, parameterCode, parameterName, unit, method, normalRangeLow, normalRangeHigh, normalRangeText, normalRangeTextMale, normalRangeTextFemale, description,
     isInterpretation: !!isInterpretation,
     sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
   });

@@ -113,6 +113,8 @@ async function start() {
     'ALTER TABLE test_master ADD COLUMN IF NOT EXISTS "testType" VARCHAR(255) NOT NULL DEFAULT \'REGULAR\'',
     'ALTER TABLE client_test_price ADD COLUMN IF NOT EXISTS "overrideChiefInactive" BOOLEAN NOT NULL DEFAULT false',
     'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeText" TEXT',
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeTextMale" TEXT',
+    'ALTER TABLE parameter_master ADD COLUMN IF NOT EXISTS "normalRangeTextFemale" TEXT',
     // One payor period may now have several invoices - drop the old unique
     // (payorId, month) index and keep a plain one for lookups.
     'DROP INDEX IF EXISTS payor_invoice_payor_id_month',

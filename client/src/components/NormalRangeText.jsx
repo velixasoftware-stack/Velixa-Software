@@ -1,9 +1,11 @@
-// The "Normal Range (as printed)" box on parameter forms: the reference range
-// exactly as it prints in the report's Bio. Ref. Interval column. Entering
-// Range Low / High (and any age/gender range rows) clubs them into this box
-// automatically - one line each; once someone edits the box it stops
-// auto-filling (clearing it turns auto-fill back on). It can also be typed
-// on its own, without any low/high - e.g. "Negative" or several lines.
+// The "Normal Range (as printed)" boxes on parameter forms - gender-wise:
+// Male, Female and Common. A male/female patient's report prints its own
+// box (falling back to Common when that box is empty); anyone else gets
+// Common. Each box fills itself from the ranges entered - Male from the Male
+// age/gender rows, Female from the Female rows, Common from the default
+// Range Low/High and the "Any" rows - one line per age band. Once a box is
+// edited by hand it stops auto-filling (clearing it turns auto-fill back
+// on). Any box can also be typed on its own, e.g. "Negative".
 import { useEffect, useState } from 'react';
 import api from '../api/client';
 
@@ -16,57 +18,92 @@ function pair(low, high) {
   return '';
 }
 
-/** Default low/high plus every age/gender range row, one line each. */
-export function autoRangeText(low, high, rows = []) {
-  const lines = [];
-  const base = pair(low, high);
-  const ruleLines = rows
+const blank = (v) => v === '' || v == null;
+function ageBand(r) {
+  if (blank(r.ageMin) && blank(r.ageMax)) return '';
+  return `${blank(r.ageMin) ? 0 : r.ageMin}-${blank(r.ageMax) ? '∞' : r.ageMax} ${r.ageUnit || 'Years'}`;
+}
+
+function rowLines(rows, keep, withGender = false) {
+  return rows
+    .filter(keep)
     .map((r) => {
       const range = pair(r.normalRangeLow, r.normalRangeHigh);
       if (!range) return null;
-      const who = [
-        r.gender && r.gender !== 'Any' ? r.gender : '',
-        r.ageMin !== '' && r.ageMin != null || r.ageMax !== '' && r.ageMax != null
-          ? `${r.ageMin === '' || r.ageMin == null ? 0 : r.ageMin}-${r.ageMax === '' || r.ageMax == null ? '∞' : r.ageMax} ${r.ageUnit || 'Years'}`
-          : '',
-      ].filter(Boolean).join(' ');
+      const who = [withGender && r.gender && r.gender !== 'Any' ? r.gender : '', ageBand(r)].filter(Boolean).join(' ');
       return who ? `${who}: ${range}` : range;
     })
     .filter(Boolean);
-  if (base) lines.push(ruleLines.length ? `Default: ${base}` : base);
-  lines.push(...ruleLines);
-  return lines.join('\n');
 }
 
-/**
- * Keeps form.normalRangeText filled from its ranges until edited by hand.
- * form needs normalRangeText + rangeTextEdited; setForm is its state setter.
- */
+/** { common, male, female } texts from the default low/high and the range rows. */
+export function autoRangeTexts(low, high, rows = []) {
+  const g = (r) => (r.gender || 'Any');
+  const male = rowLines(rows, (r) => g(r) === 'Male').join('\n');
+  const female = rowLines(rows, (r) => g(r) === 'Female').join('\n');
+  const others = rowLines(rows, (r) => g(r) !== 'Male' && g(r) !== 'Female', true);
+  const base = pair(low, high);
+  const common = [base && others.length ? `Default: ${base}` : base, ...others].filter(Boolean).join('\n');
+  return { common, male, female };
+}
+
+const FIELDS = [
+  { key: 'normalRangeTextMale', auto: 'male', edited: 'rangeTextMaleEdited', label: 'Male' },
+  { key: 'normalRangeTextFemale', auto: 'female', edited: 'rangeTextFemaleEdited', label: 'Female' },
+  { key: 'normalRangeText', auto: 'common', edited: 'rangeTextEdited', label: 'Common (all / other)' },
+];
+
+/** Blank form fields for the three boxes. */
+export const blankRangeTexts = () => ({
+  normalRangeText: '', normalRangeTextMale: '', normalRangeTextFemale: '',
+  rangeTextEdited: false, rangeTextMaleEdited: false, rangeTextFemaleEdited: false,
+});
+
+/** Keeps each box filled from its ranges until that box is edited by hand. */
 export function useAutoRangeText(form, setForm, low, high, rows) {
-  const auto = autoRangeText(low, high, rows);
+  const auto = autoRangeTexts(low, high, rows);
+  const sig = `${auto.common}\u0000${auto.male}\u0000${auto.female}`;
   useEffect(() => {
-    if (!form.rangeTextEdited && form.normalRangeText !== auto) {
-      setForm((f) => ({ ...f, normalRangeText: auto }));
-    }
-  }, [auto, form.rangeTextEdited]); // eslint-disable-line react-hooks/exhaustive-deps
+    setForm((f) => {
+      let next = f;
+      for (const fld of FIELDS) {
+        if (!f[fld.edited] && f[fld.key] !== auto[fld.auto]) next = { ...next, [fld.key]: auto[fld.auto] };
+      }
+      return next;
+    });
+  }, [sig, form.rangeTextEdited, form.rangeTextMaleEdited, form.rangeTextFemaleEdited]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/** Typing marks the box as edited; clearing it resumes auto-fill. */
-export function rangeTextChange(setForm) {
-  return (value) => setForm((f) => ({ ...f, normalRangeText: value, rangeTextEdited: value.trim() !== '' }));
-}
-
-export default function NormalRangeTextBox({ value, onChange }) {
+function RangeBox({ label, value, onChange, placeholder }) {
   return (
-    <label style={{ display: 'block', marginTop: 10 }}>
-      <span>Normal Range (as printed on the report)</span>
-      <textarea
-        rows={3}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={'Fills from the ranges above, or type directly - e.g. "Negative", "Up to 200 mg/dL", or one line per age group'}
-      />
+    <label style={{ display: 'block', margin: 0 }}>
+      <span>{label}</span>
+      <textarea rows={3} value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
     </label>
+  );
+}
+
+/** The three boxes for a parameter form; typing marks a box edited, clearing resumes auto-fill. */
+export default function NormalRangeTextBoxes({ form, setForm }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <span style={{ fontWeight: 600, fontSize: 13 }}>Normal Range (as printed on the report)</span>
+      <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 6px' }}>
+        A male/female patient's report prints their own box; anyone else (or an empty box) gets Common.
+        Fills from the ranges above, or type directly - e.g. "Negative".
+      </p>
+      <div className="range-text-grid">
+        {FIELDS.map((fld) => (
+          <RangeBox
+            key={fld.key}
+            label={fld.label}
+            value={form[fld.key]}
+            placeholder={fld.auto === 'common' ? 'e.g. 70 - 110 or Negative' : `Printed for ${fld.label.toLowerCase()} patients`}
+            onChange={(v) => setForm((f) => ({ ...f, [fld.key]: v, [fld.edited]: v.trim() !== '' }))}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -78,21 +115,27 @@ export function rangeLabel(p) {
 }
 
 /**
- * Edit an existing parameter's printed Normal Range (Manage ranges dialog).
- * canEdit false (a universal parameter seen from a client) shows it read-only.
+ * Edit an existing parameter's printed Normal Ranges (Manage ranges dialog).
+ * canEdit false (a universal parameter seen from a client) shows them read-only.
  */
 export function ManageRangeText({ param, apiBase, canEdit, onSaved }) {
-  const [draft, setDraft] = useState(param.normalRangeText || '');
+  const fromParam = () => ({
+    normalRangeText: param.normalRangeText || '',
+    normalRangeTextMale: param.normalRangeTextMale || '',
+    normalRangeTextFemale: param.normalRangeTextFemale || '',
+  });
+  const [draft, setDraft] = useState(fromParam);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
-  useEffect(() => { setDraft(param.normalRangeText || ''); setMsg(''); }, [param.id, param.normalRangeText]);
-  const suggested = autoRangeText(param.normalRangeLow, param.normalRangeHigh, param.ParameterNormalRanges || []);
+  useEffect(() => { setDraft(fromParam()); setMsg(''); }, [param.id, param.normalRangeText, param.normalRangeTextMale, param.normalRangeTextFemale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const auto = autoRangeTexts(param.normalRangeLow, param.normalRangeHigh, param.ParameterNormalRanges || []);
+  const suggested = { normalRangeText: auto.common, normalRangeTextMale: auto.male, normalRangeTextFemale: auto.female };
 
   async function save() {
     setSaving(true);
     setMsg('');
     try {
-      await api.put(`${apiBase}/parameters/${param.id}/normal-range-text`, { normalRangeText: draft });
+      await api.put(`${apiBase}/parameters/${param.id}/normal-range-text`, draft);
       setMsg('Saved');
       onSaved?.();
     } catch (err) {
@@ -104,22 +147,33 @@ export function ManageRangeText({ param, apiBase, canEdit, onSaved }) {
 
   if (!canEdit) {
     return (
-      <p style={{ fontSize: 13, color: '#64748b', whiteSpace: 'pre-wrap' }}>
-        Printed on report: <strong>{param.normalRangeText || suggested || '—'}</strong> (universal parameter - set by Chief Admin)
-      </p>
+      <div style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
+        Printed on report (universal parameter - set by Chief Admin):
+        {FIELDS.map((fld) => (
+          <div key={fld.key} style={{ whiteSpace: 'pre-wrap' }}><strong>{fld.label}:</strong> {param[fld.key] || suggested[fld.key] || '—'}</div>
+        ))}
+      </div>
     );
   }
+  const differs = FIELDS.some((fld) => suggested[fld.key] && draft[fld.key] !== suggested[fld.key]);
   return (
     <div style={{ margin: '0 0 12px' }}>
-      <NormalRangeTextBox value={draft} onChange={setDraft} />
+      <span style={{ fontWeight: 600, fontSize: 13 }}>Normal Range (as printed on the report)</span>
+      <div className="range-text-grid" style={{ marginTop: 6 }}>
+        {FIELDS.map((fld) => (
+          <RangeBox key={fld.key} label={fld.label} value={draft[fld.key]} onChange={(v) => setDraft((d) => ({ ...d, [fld.key]: v }))} />
+        ))}
+      </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
         <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Normal Range'}</button>
-        {suggested && draft !== suggested && (
-          <button type="button" className="secondary" onClick={() => setDraft(suggested)}>Fill from ranges</button>
+        {differs && (
+          <button type="button" className="secondary" onClick={() => setDraft((d) => ({ ...d, ...Object.fromEntries(FIELDS.filter((f) => suggested[f.key]).map((f) => [f.key, suggested[f.key]])) }))}>
+            Fill from ranges
+          </button>
         )}
         {msg && <span style={{ fontSize: 12, color: msg === 'Saved' ? '#15803d' : '#b91c1c' }}>{msg}</span>}
       </div>
-      <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>Leave empty to print the low - high range instead.</p>
+      <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>A male/female box left empty prints Common; all empty prints the low - high range.</p>
     </div>
   );
 }

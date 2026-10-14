@@ -277,6 +277,11 @@ const ParameterMaster = sequelize.define('ParameterMaster', {
   // separate lines). When set it's printed instead of low - high; low/high
   // still drive the abnormal (red) flag.
   normalRangeText: { type: DataTypes.TEXT },
+  // Gender-wise versions of the printed range: a male/female patient's
+  // report prints its own (falling back to normalRangeText - the common one -
+  // when its box is empty). See utils/normalRange.js printedRangeText.
+  normalRangeTextMale: { type: DataTypes.TEXT },
+  normalRangeTextFemale: { type: DataTypes.TEXT },
   // Free-text clinical notes about this parameter (interpretation, significance, etc.) - long-form, so TEXT not STRING.
   description: { type: DataTypes.TEXT },
   // True for a qualitative parameter (e.g. a Widal titer conclusion, a

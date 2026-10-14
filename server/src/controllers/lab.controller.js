@@ -4,7 +4,7 @@ const {
   ReferralDoctor, Payor, ClientUser, ClientParameterTrend,
 } = require('../models');
 const { buildParameterInsight } = require('../utils/trendInsights');
-const { resolveNormalRange } = require('../utils/normalRange');
+const { resolveNormalRange, printedRangeText } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 const { getCurrentActor } = require('../utils/auditContext');
@@ -87,6 +87,8 @@ async function withResolvedRanges(sampleJson) {
       const resolved = resolveNormalRange(p, age, gender, ageUnit);
       p.normalRangeLow = resolved.normalRangeLow;
       p.normalRangeHigh = resolved.normalRangeHigh;
+      // Result entry shows the same gender-wise Normal Range text the report prints.
+      p.normalRangeText = printedRangeText(p, gender);
     }
   }
   return sampleJson;
@@ -376,7 +378,7 @@ async function getBillReport(req, res) {
         unit: r.ParameterMaster.unit,
         normalRangeLow: range.normalRangeLow,
         normalRangeHigh: range.normalRangeHigh,
-        normalRangeText: r.ParameterMaster.normalRangeText || null, // printed instead of low - high when set
+        normalRangeText: printedRangeText(r.ParameterMaster, gender), // patient's gender-wise text, printed instead of low - high when set
         isAbnormal: r.isAbnormal,
         isInterpretation: r.ParameterMaster.isInterpretation,
       };
@@ -478,7 +480,7 @@ async function shareReport(req, res) {
       }
       const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
       const flag = r.isAbnormal ? ' (abnormal)' : '';
-      return `  ${r.ParameterMaster.parameterName}: ${r.value} ${r.ParameterMaster.unit || ''} (Normal: ${r.ParameterMaster.normalRangeText || `${range.normalRangeLow}-${range.normalRangeHigh}`})${flag}`;
+      return `  ${r.ParameterMaster.parameterName}: ${r.value} ${r.ParameterMaster.unit || ''} (Normal: ${printedRangeText(r.ParameterMaster, bill.Patient?.gender) || `${range.normalRangeLow}-${range.normalRangeHigh}`})${flag}`;
     }).join('\n');
     const remarksLine = s.remarks ? `\n  Remarks: ${s.remarks.replace(/\t/g, ' | ')}` : '';
     return `${testLine}\n${paramLines}${remarksLine}`;

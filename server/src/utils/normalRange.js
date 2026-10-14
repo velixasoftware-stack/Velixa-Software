@@ -50,4 +50,15 @@ function resolveNormalRange(parameter, age, gender, ageUnit) {
   return { normalRangeLow: parameter.normalRangeLow, normalRangeHigh: parameter.normalRangeHigh, matchedRuleId: null };
 }
 
-module.exports = { resolveNormalRange };
+// The Normal Range text printed for this patient: the male/female version
+// for a male/female patient when one is set, otherwise the common
+// normalRangeText. Null when nothing is set (the report prints low - high).
+function printedRangeText(parameter, gender) {
+  const pick = (v) => (v && v.toString().trim() ? v : null);
+  const g = (gender || '').toString().trim().toLowerCase();
+  if (g === 'male' && pick(parameter.normalRangeTextMale)) return parameter.normalRangeTextMale;
+  if (g === 'female' && pick(parameter.normalRangeTextFemale)) return parameter.normalRangeTextFemale;
+  return pick(parameter.normalRangeText);
+}
+
+module.exports = { resolveNormalRange, printedRangeText };

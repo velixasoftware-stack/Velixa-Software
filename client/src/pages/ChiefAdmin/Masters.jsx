@@ -3,7 +3,7 @@ import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import StatusSwitch from '../../components/StatusSwitch';
-import NormalRangeTextBox, { useAutoRangeText, rangeTextChange, ManageRangeText } from '../../components/NormalRangeText';
+import NormalRangeTextBoxes, { useAutoRangeText, blankRangeTexts, ManageRangeText } from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 
@@ -12,7 +12,7 @@ const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
 const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '' });
 const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', testType: '', interpretation: '' });
-const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeText: '', rangeTextEdited: false });
+const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, ...blankRangeTexts() });
 // Narrower than the app-wide .form-grid default (minmax 200px) so Gender/Age/Unit/Range fields
 // wrap two-three to a row instead of stacking one-per-row on a narrow/mobile screen.
 const rangeGridStyle = { alignItems: 'end', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' };
@@ -236,7 +236,7 @@ export default function Masters() {
     setError('');
     const normalRanges = paramForm.isInterpretation ? [] : rangeRows.filter((r) => r.normalRangeLow || r.normalRangeHigh);
     // A range row, or the printed Normal Range text on its own (e.g. "Negative").
-    if (!paramForm.isInterpretation && normalRanges.length === 0 && !paramForm.normalRangeText?.trim()) {
+    if (!paramForm.isInterpretation && normalRanges.length === 0 && ![paramForm.normalRangeText, paramForm.normalRangeTextMale, paramForm.normalRangeTextFemale].some((t) => t?.trim())) {
       setError('Enter an age/gender range (Range Low or High) or the Normal Range text.');
       return;
     }
@@ -710,7 +710,7 @@ This cannot be undone.`)) return;
                     </div>
                   ))}
                   <button type="button" className="secondary" onClick={addRangeRow}>+ Add Age/Gender Range</button>
-                  <NormalRangeTextBox value={paramForm.normalRangeText} onChange={rangeTextChange(setParamForm)} />
+                  <NormalRangeTextBoxes form={paramForm} setForm={setParamForm} />
                 </div>
               )}
 

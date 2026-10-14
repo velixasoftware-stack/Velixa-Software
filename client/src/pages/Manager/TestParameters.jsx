@@ -3,14 +3,14 @@ import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import SearchSelect from '../../components/SearchSelect';
-import NormalRangeTextBox, { useAutoRangeText, rangeTextChange, ManageRangeText } from '../../components/NormalRangeText';
+import NormalRangeTextBoxes, { useAutoRangeText, blankRangeTexts, ManageRangeText } from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 
 const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
 const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '' });
-const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeLow: '', normalRangeHigh: '', normalRangeText: '', rangeTextEdited: false, description: '' });
+const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeLow: '', normalRangeHigh: '', ...blankRangeTexts(), description: '' });
 // Narrower than the app-wide .form-grid default (minmax 200px) so Gender/Age/Unit/Range fields
 // wrap two-three to a row instead of stacking one-per-row on a narrow/mobile screen.
 const rangeGridStyle = { alignItems: 'end', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' };
@@ -507,7 +507,7 @@ It will no longer appear on result entry. Reports already released keep their va
                     </div>
                   ))}
                   <button type="button" className="secondary" onClick={addRangeRow}>+ Add Age/Gender Range</button>
-                  <NormalRangeTextBox value={paramForm.normalRangeText} onChange={rangeTextChange(setParamForm)} />
+                  <NormalRangeTextBoxes form={paramForm} setForm={setParamForm} />
                 </div>
               )}
 
