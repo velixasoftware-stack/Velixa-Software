@@ -40,6 +40,7 @@ router.put('/tests/:testId/parameters/:parameterId/sequence', testCtrl.setParame
 router.delete('/tests/:testId/parameters/:parameterId', testCtrl.removeParameter);
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
+router.put('/parameters/:parameterId/normal-range-text', testCtrl.setNormalRangeText); // printed reference range
 
 router.get('/tests/template', testCtrl.downloadTemplate);
 router.post('/tests/upload/preview', uploadFile, testCtrl.previewUpload);

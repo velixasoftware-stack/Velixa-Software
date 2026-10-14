@@ -22,6 +22,7 @@ router.put('/tests/:testId/parameters/:parameterId/sequence', testCtrl.setParame
 router.delete('/tests/:testId/parameters/:parameterId', testCtrl.removeParameter);
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
+router.put('/parameters/:parameterId/normal-range-text', testCtrl.setNormalRangeText); // printed reference range
 router.put('/parameters/:parameterId/trend', testCtrl.setParameterTrend); // show this parameter's trend on reports
 
 router.get('/test-shortname', shortNameCtrl.listShortNames);

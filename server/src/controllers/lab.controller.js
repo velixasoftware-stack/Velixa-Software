@@ -376,6 +376,7 @@ async function getBillReport(req, res) {
         unit: r.ParameterMaster.unit,
         normalRangeLow: range.normalRangeLow,
         normalRangeHigh: range.normalRangeHigh,
+        normalRangeText: r.ParameterMaster.normalRangeText || null, // printed instead of low - high when set
         isAbnormal: r.isAbnormal,
         isInterpretation: r.ParameterMaster.isInterpretation,
       };
@@ -477,7 +478,7 @@ async function shareReport(req, res) {
       }
       const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
       const flag = r.isAbnormal ? ' (abnormal)' : '';
-      return `  ${r.ParameterMaster.parameterName}: ${r.value} ${r.ParameterMaster.unit || ''} (Normal: ${range.normalRangeLow}-${range.normalRangeHigh})${flag}`;
+      return `  ${r.ParameterMaster.parameterName}: ${r.value} ${r.ParameterMaster.unit || ''} (Normal: ${r.ParameterMaster.normalRangeText || `${range.normalRangeLow}-${range.normalRangeHigh}`})${flag}`;
     }).join('\n');
     const remarksLine = s.remarks ? `\n  Remarks: ${s.remarks.replace(/\t/g, ' | ')}` : '';
     return `${testLine}\n${paramLines}${remarksLine}`;

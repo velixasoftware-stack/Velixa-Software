@@ -44,6 +44,23 @@ async function generateParameterCode() {
   return code;
 }
 
+// PUT .../parameters/:parameterId/normal-range-text  { normalRangeText }
+// The reference range printed on the report for this parameter (blank =
+// print low - high again). A client may only change its own parameters;
+// Chief Admin changes the universal ones (shared by every client).
+async function setNormalRangeText(req, res) {
+  const clientId = requesterClientId(req);
+  const parameter = await ParameterMaster.findByPk(req.params.parameterId);
+  if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+  if ((parameter.clientId ?? null) !== (clientId ?? null)) {
+    return res.status(403).json({ message: clientId
+      ? 'This is a universal parameter - its printed range is set by Chief Admin'
+      : 'This parameter belongs to a client - it can only be changed from that client' });
+  }
+  await parameter.update({ normalRangeText: req.body.normalRangeText?.toString().trim() || null });
+  return res.json(parameter);
+}
+
 // PUT /api/test-config/parameters/:parameterId/trend  { showTrend }
 // Client-only: whether this parameter's trend prints on this client's patient
 // reports. Stored per parameter, so it applies on every test it's mapped to.
@@ -345,6 +362,7 @@ async function addParameter(req, res) {
   if (!test) return res.status(404).json({ message: 'Test not found' });
 
   const { parameterName, unit, method, normalRangeLow, normalRangeHigh, description, isInterpretation, normalRanges } = req.body;
+  const normalRangeText = req.body.normalRangeText?.toString().trim() || null;
   if (!parameterName) return res.status(400).json({ message: 'parameterName is required' });
 
   if (normalRanges !== undefined) {
@@ -374,6 +392,7 @@ async function addParameter(req, res) {
     const maxSeq = seqGiven ? null : await ParameterMaster.max('sequence', { where: { testId: test.id, active: true } });
     await existing.update({
       active: true, unit: unit ?? existing.unit, method: method ?? existing.method,
+      normalRangeText: normalRangeText ?? existing.normalRangeText,
       sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
     });
     return res.status(200).json(existing);
@@ -385,7 +404,7 @@ async function addParameter(req, res) {
   const seqGiven = req.body.sequence !== undefined && req.body.sequence !== '' && req.body.sequence !== null;
   const maxSeq = seqGiven ? null : await ParameterMaster.max('sequence', { where: { testId: test.id } });
   const parameter = await ParameterMaster.create({
-    testId: test.id, clientId, parameterCode, parameterName, unit, method, normalRangeLow, normalRangeHigh, description,
+    testId: test.id, clientId, parameterCode, parameterName, unit, method, normalRangeLow, normalRangeHigh, normalRangeText, description,
     isInterpretation: !!isInterpretation,
     sequence: seqGiven ? Number(req.body.sequence) : (Number(maxSeq) || 0) + 1,
   });
@@ -942,5 +961,5 @@ async function commitUpload(req, res) {
 
 module.exports = {
   createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
-  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend,
+  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend, setNormalRangeText,
 };

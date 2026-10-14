@@ -364,7 +364,7 @@ export default function ReviewResults({ group, focusSampleId, onClose, onSaved }
                                 {flag && <span className={`rt-flag ${flag}`} title={flag === 'H' ? 'Above normal range' : 'Below normal range'}>{flag === 'H' ? '▲ H' : '▼ L'}</span>}
                               </div>
                             </td>
-                            <td className="rt-range" data-label="Normal">{hasRange ? `${p.normalRangeLow} – ${p.normalRangeHigh}` : '—'}{hasRange && p.unit ? <span className="rt-unit"> {p.unit}</span> : null}</td>
+                            <td className="rt-range" data-label="Normal">{p.normalRangeText?.trim() ? <span style={{ whiteSpace: 'pre-wrap' }}>{p.normalRangeText}</span> : (hasRange ? `${p.normalRangeLow} – ${p.normalRangeHigh}` : '—')}{!p.normalRangeText?.trim() && hasRange && p.unit ? <span className="rt-unit"> {p.unit}</span> : null}</td>
                             <td className="rt-prev" data-label="Previous">
                               {prev ? (
                                 <>

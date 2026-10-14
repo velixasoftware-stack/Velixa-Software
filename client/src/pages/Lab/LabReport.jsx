@@ -6,6 +6,7 @@ import ShareButton from '../../components/ShareButton';
 import { ReportRemarks } from '../../components/Remarks';
 import { doctorLabel } from '../../utils/format';
 import Sparkline from '../../components/Sparkline';
+import { rangeLabel } from '../../components/NormalRangeText';
 
 function formatDateTime(d) {
   if (!d) return '—';
@@ -158,7 +159,8 @@ function addTestUnits(units, t, testIdx, trendRows = []) {
         <td>{p.parameterName}</td>
         <td style={p.isAbnormal ? { color: '#b91c1c', fontWeight: 700 } : undefined}>{p.value}</td>
         <td>{p.unit || '—'}</td>
-        <td>{p.normalRangeLow} - {p.normalRangeHigh}</td>
+        {/* The printed Normal Range text when set (may be several lines), else low - high. */}
+        <td className="report-ref-range">{rangeLabel(p)}</td>
       </tr>
     ),
   }));

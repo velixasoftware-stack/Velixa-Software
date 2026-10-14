@@ -271,6 +271,12 @@ const ParameterMaster = sequelize.define('ParameterMaster', {
   // The default range, used whenever no age/gender-specific rule below matches.
   normalRangeLow: { type: DataTypes.STRING },
   normalRangeHigh: { type: DataTypes.STRING },
+  // The reference range exactly as printed on the report ("Bio. Ref.
+  // Interval") - auto-filled from low/high at creation but editable, and may
+  // be given on its own (e.g. "Negative", "Up to 200", several age bands on
+  // separate lines). When set it's printed instead of low - high; low/high
+  // still drive the abnormal (red) flag.
+  normalRangeText: { type: DataTypes.TEXT },
   // Free-text clinical notes about this parameter (interpretation, significance, etc.) - long-form, so TEXT not STRING.
   description: { type: DataTypes.TEXT },
   // True for a qualitative parameter (e.g. a Widal titer conclusion, a
