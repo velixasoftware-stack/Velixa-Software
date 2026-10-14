@@ -9,6 +9,7 @@ const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { fastingPostLunchConflict } = require('../utils/testType');
 const { isBillableForClient } = require('../utils/testStatus');
+const { itemCharges, cancellationSplit, withCharges, round2 } = require('../utils/billCharges');
 
 /**
  * Next bill number for a client: its Client Code immediately followed by a
@@ -302,7 +303,9 @@ async function getBill(req, res) {
   const { clientId } = req.user;
   const bill = await Bill.findOne({ where: { id: req.params.id, clientId }, include: [...billIncludes, Client] });
   if (!bill) return res.status(404).json({ message: 'Bill not found' });
-  return res.json(bill);
+  // Per-test charge after the bill discount, and the active tests' share of
+  // the discount - see utils/billCharges.js.
+  return res.json(withCharges(bill));
 }
 
 // POST /api/billing/bills/:billId/items  (Body: { testId })
@@ -430,12 +433,9 @@ async function cancelBillItem(req, res) {
     return res.status(403).json({ message: 'Cancellation & refund is not enabled for this clinic. Contact your administrator.' });
   }
 
-  const refundAmount = Number(amount);
-  if (!refundAmount || refundAmount <= 0) {
-    return res.status(400).json({ message: 'A refund amount greater than 0 is required' });
-  }
-  if (!mode?.trim()) {
-    return res.status(400).json({ message: 'Refund payment mode is required' });
+  const refundAmount = round2(Number(amount) || 0);
+  if (refundAmount < 0) {
+    return res.status(400).json({ message: 'Refund amount cannot be negative' });
   }
 
   const bill = await Bill.findOne({ where: { id: billId, clientId } });
@@ -460,16 +460,33 @@ async function cancelBillItem(req, res) {
     return res.status(400).json({ message: 'Cannot cancel a test whose report has already been released' });
   }
 
-  const alreadyRefunded = (billItem.Refunds || []).reduce((sum, r) => sum + Number(r.amount), 0);
-  const maxRefundable = Number(billItem.price) - alreadyRefunded;
-  if (refundAmount > maxRefundable) {
-    return res.status(400).json({ message: `Refund amount cannot exceed ₹${maxRefundable.toFixed(2)} remaining on this test` });
+  // The test's actual charge is its share of the bill after the bill-level
+  // discount (and GST) - not its list price. That charge first clears any
+  // amount still due on the bill; only the rest, and never more than was
+  // actually collected, can be refunded. See utils/billCharges.js.
+  const allItems = await BillItem.findAll({ where: { billId: bill.id }, include: [Refund], order: [['id', 'ASC']] });
+  const charge = itemCharges(bill, allItems).get(billItem.id);
+  const { fromDue, maxRefund } = cancellationSplit(bill, charge);
+  if (refundAmount > maxRefund) {
+    return res.status(400).json({
+      message: maxRefund > 0
+        ? `Refund cannot exceed ₹${maxRefund.toFixed(2)} - this test's charge after its share of the bill discount${fromDue > 0 ? ` and the ₹${fromDue.toFixed(2)} still due` : ''}`
+        : 'Nothing to refund for this test - its charge is covered by the amount still due on the bill',
+    });
+  }
+  if (maxRefund > 0 && refundAmount <= 0) {
+    return res.status(400).json({ message: 'A refund amount greater than 0 is required' });
+  }
+  if (refundAmount > 0 && !mode?.trim()) {
+    return res.status(400).json({ message: 'Refund payment mode is required' });
   }
 
   const result = await sequelize.transaction(async (t) => {
-    const refund = await Refund.create({
-      billId: bill.id, billItemId: billItem.id, amount: refundAmount, mode, reason: reason || null,
-    }, { transaction: t });
+    const refund = refundAmount > 0
+      ? await Refund.create({
+        billId: bill.id, billItemId: billItem.id, amount: refundAmount, mode, reason: reason || null,
+      }, { transaction: t })
+      : null;
 
     billItem.status = 'CANCELLED';
     await billItem.save({ transaction: t });
@@ -479,15 +496,17 @@ async function cancelBillItem(req, res) {
       await billItem.Sample.save({ transaction: t });
     }
 
-    // paidAmount reflects net revenue actually retained, so it drops by the refund.
-    bill.paidAmount = Math.max(0, Number(bill.paidAmount) - refundAmount);
+    // The cancelled test is no longer owed (its share comes off the due), and
+    // paidAmount - net money actually retained - drops by the refund.
+    bill.dueAmount = round2(Math.max(0, Number(bill.dueAmount) - fromDue));
+    bill.paidAmount = round2(Math.max(0, Number(bill.paidAmount) - refundAmount));
     await bill.save({ transaction: t });
 
     return refund;
   });
 
   const full = await Bill.findOne({ where: { id: bill.id, clientId }, include: [...billIncludes, Client] });
-  return res.status(201).json({ refund: result, bill: full });
+  return res.status(201).json({ refund: result, bill: withCharges(full) });
 }
 
 // PUT /api/billing/bills/:billId/discount

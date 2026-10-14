@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 
 const PAYMENT_MODES = ['Cash', 'Card', 'UPI', 'Insurance'];
+const money = (n) => Number(n || 0).toFixed(2);
 
 // Everything needed to amend an already-billed order in one place: add a
 // test, cancel a test (with refund), and record a payment against whatever
@@ -47,6 +48,7 @@ export default function EditOrder() {
   }, [billId]);
 
   if (!bill) return <p>Loading…</p>;
+  const hasCancelled = bill.BillItems.some((i) => i.status === 'CANCELLED');
 
   const activeTestIds = new Set(bill.BillItems.filter((i) => i.status === 'ACTIVE').map((i) => i.testId));
   const q = testQuery.trim().toLowerCase();
@@ -146,10 +148,12 @@ export default function EditOrder() {
     }
   }
 
+  // Pre-fills the most that can be refunded: the test's charge after its
+  // share of the bill discount (item.maxRefund from the server), not its list
+  // price - refunding the list price would hand back part of the discount.
   function openCancel(item) {
-    const refunded = (item.Refunds || []).reduce((s, r) => s + Number(r.amount), 0);
     setCancelItem(item);
-    setCancelForm({ amount: String(Number(item.price) - refunded), mode: 'Cash', reason: '' });
+    setCancelForm({ amount: String(item.maxRefund ?? 0), mode: 'Cash', reason: '' });
     setCancelError('');
   }
 
@@ -187,8 +191,11 @@ export default function EditOrder() {
               </button>
             </span>
           </div>
-          <div className="review-box-row"><span>Total</span><span>₹{bill.totalAmount}</span></div>
-          <div className="review-box-row"><span>Discount</span><span>₹{bill.discount}</span></div>
+          {/* Once tests are cancelled, Total/Discount show only the remaining
+              (active) tests - the cancelled tests' share of the discount went
+              with them. */}
+          <div className="review-box-row"><span>Total{hasCancelled ? ' (active tests)' : ''}</span><span>₹{money(hasCancelled ? bill.activeGross : bill.totalAmount)}</span></div>
+          <div className="review-box-row"><span>Discount{hasCancelled ? ' (active tests)' : ''}</span><span>₹{money(hasCancelled ? bill.activeDiscount : bill.discount)}</span></div>
           <div className="review-box-row"><span>Paid</span><span>₹{bill.paidAmount}</span></div>
           <div className="review-box-row">
             <span>Due</span>
@@ -198,7 +205,7 @@ export default function EditOrder() {
         {error && <p className="error-text">{error}</p>}
 
         <table style={{ marginTop: 14 }}>
-          <thead><tr><th>Test</th><th>Price</th><th>Status</th><th>Refunded</th><th></th></tr></thead>
+          <thead><tr><th>Test</th><th>Price</th><th title="Price after its share of the bill discount (and GST)">Charged</th><th>Status</th><th>Refunded</th><th></th></tr></thead>
           <tbody>
             {bill.BillItems.map((item) => {
               const refunded = (item.Refunds || []).reduce((s, r) => s + Number(r.amount), 0);
@@ -206,6 +213,7 @@ export default function EditOrder() {
                 <tr key={item.id}>
                   <td>{item.TestMaster?.testName}</td>
                   <td>₹{item.price}</td>
+                  <td>{item.charge != null ? `₹${money(item.charge)}` : '—'}</td>
                   <td><span className={`badge ${item.status === 'CANCELLED' ? 'CANCELLED' : 'PAID'}`}>{item.status}</span></td>
                   <td>{refunded > 0 ? `₹${refunded.toFixed(2)}` : '—'}</td>
                   <td>
@@ -368,9 +376,17 @@ export default function EditOrder() {
         <div className="modal-overlay" onClick={() => setCancelItem(null)}>
           <div className="modal-card" style={{ maxWidth: 420, textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
             <h2>Cancel — {cancelItem.TestMaster?.testName}</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginTop: 0 }}>
+              Price ₹{money(cancelItem.price)} · charged ₹{money(cancelItem.charge)} after its share of the bill discount
+              {Number(cancelItem.fromDue) > 0 && <> · ₹{money(cancelItem.fromDue)} comes off the amount still due</>}
+              . Maximum refund: <strong>₹{money(cancelItem.maxRefund)}</strong>.
+            </p>
             <form onSubmit={handleCancelTest}>
               <label><span>Refund Amount</span>
-                <input type="number" min="0" value={cancelForm.amount} onChange={(e) => setCancelForm((f) => ({ ...f, amount: e.target.value }))} />
+                <input
+                  type="number" min="0" step="0.01" max={cancelItem.maxRefund ?? undefined}
+                  value={cancelForm.amount} onChange={(e) => setCancelForm((f) => ({ ...f, amount: e.target.value }))}
+                />
               </label>
               <label><span>Mode</span>
                 <select value={cancelForm.mode} onChange={(e) => setCancelForm((f) => ({ ...f, mode: e.target.value }))}>

@@ -44,6 +44,14 @@ export default function BillReceiptSheet({ bill }) {
   // (a due payment, a refund, a post-billing discount all move paidAmount
   // without changing what the bill was originally billed for).
   const netAmount = Number(bill.paidAmount) + Number(bill.dueAmount);
+  // With tests cancelled, the discount and GST shown are only the remaining
+  // tests' share (activeDiscount/activeTax from the server) - the cancelled
+  // tests' share left with them, so the full discount isn't shown against
+  // fewer tests. A bill with nothing cancelled shows the original figures.
+  const hasCancelled = bill.BillItems.some((i) => i.status === 'CANCELLED');
+  const useActive = hasCancelled && bill.activeDiscount != null;
+  const discountShown = useActive ? Number(bill.activeDiscount).toFixed(2) : bill.discount;
+  const taxShown = useActive ? Number(bill.activeTax).toFixed(2) : bill.taxAmount;
   // Branding details (set from Report Branding) are what's shown on a bill -
   // deliberately separate from the clientName/address/mobile/email Chief
   // Admin set at client creation, falling back to those only until this
@@ -135,11 +143,11 @@ export default function BillReceiptSheet({ bill }) {
           )}
 
           <div className="bill-receipt-summary">
-            {Number(bill.discount) > 0 && <div><span>Discount</span><strong>₹{bill.discount}</strong></div>}
-            {Number(bill.taxAmount) > 0 && (
+            {Number(discountShown) > 0 && <div><span>Discount</span><strong>₹{discountShown}</strong></div>}
+            {Number(taxShown) > 0 && (
               <>
-                <div><span>CGST ({Number(bill.gstPercent) / 2}%)</span><strong>₹{bill.cgstAmount}</strong></div>
-                <div><span>SGST ({Number(bill.gstPercent) / 2}%)</span><strong>₹{bill.sgstAmount}</strong></div>
+                <div><span>CGST ({Number(bill.gstPercent) / 2}%)</span><strong>₹{(Number(taxShown) / 2).toFixed(2)}</strong></div>
+                <div><span>SGST ({Number(bill.gstPercent) / 2}%)</span><strong>₹{(Number(taxShown) / 2).toFixed(2)}</strong></div>
               </>
             )}
             {totalRefunded > 0 && <div><span>Cancelled / Refunded</span><strong>₹{totalRefunded.toFixed(2)}</strong></div>}
