@@ -3,7 +3,9 @@ import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import StatusSwitch from '../../components/StatusSwitch';
-import NormalRangeTextBoxes, { useAutoRangeText, blankRangeTexts, ManageRangeText } from '../../components/NormalRangeText';
+import NormalRangeTextBoxes, {
+  useAutoRangeText, blankRangeTexts, useManageRangeDraft, rangeTextsChanged, saveRangeTexts, RangeTextsReadOnly,
+} from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 
@@ -43,6 +45,8 @@ function RangeMatrix({ param }) {
   );
 }
 
+const NO_PARAM = {};
+
 export default function Masters() {
   const [tests, setTests] = useState([]);
   const [search, setSearch] = useState('');
@@ -71,6 +75,10 @@ export default function Masters() {
 
   const [manageParam, setManageParam] = useState(null); // parameter row whose ranges are being managed
   const [newRange, setNewRange] = useState(emptyRangeRow());
+  // Manage ranges: the printed Normal Range boxes, filled from the saved
+  // ranges plus the one being typed - saved by the same button as the range.
+  const [rangeDraft, setRangeDraft] = useManageRangeDraft(manageParam || NO_PARAM, newRange);
+  const canEditRangeText = true;
   const [rangeError, setRangeError] = useState('');
   const [savingRange, setSavingRange] = useState(false);
 
@@ -268,13 +276,22 @@ export default function Masters() {
     setRangeError('');
   }
 
+  // One Save: adds the range typed (if any) and saves the Normal Range boxes
+  // (if changed) - either can be done on its own.
   async function handleAddExistingRange(e) {
     e.preventDefault();
     if (savingRange) return; // guard against rapid double-submit creating a duplicate range rule
     setRangeError('');
+    const hasRange = !!(newRange.normalRangeLow || newRange.normalRangeHigh);
+    const textChanged = canEditRangeText && rangeTextsChanged(manageParam, rangeDraft);
+    if (!hasRange && !textChanged) {
+      setRangeError('Enter a Range Low / High, or change the Normal Range text, then Save.');
+      return;
+    }
     setSavingRange(true);
     try {
-      await api.post(`/admin/masters/parameters/${manageParam.id}/ranges`, newRange);
+      if (hasRange) await api.post(`/admin/masters/parameters/${manageParam.id}/ranges`, newRange);
+      if (textChanged) await saveRangeTexts('/admin/masters', manageParam.id, rangeDraft);
       setNewRange(emptyRangeRow());
       const data = await load();
       const freshTest = data.tests.find((t) => t.id === selectedTestId);
@@ -730,7 +747,6 @@ This cannot be undone.`)) return;
             <p style={{ fontSize: 13, color: '#64748b' }}>
               Default range: {manageParam.normalRangeLow || '—'} - {manageParam.normalRangeHigh || '—'} (used when no rule below matches).
             </p>
-            <ManageRangeText param={manageParam} apiBase="/admin/masters" canEdit={true} onSaved={load} />
             <table>
               <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th></th></tr></thead>
               <tbody>
@@ -771,7 +787,10 @@ This cannot be undone.`)) return;
               <label><span>Range High</span>
                 <input value={newRange.normalRangeHigh} onChange={(e) => setNewRange((f) => ({ ...f, normalRangeHigh: e.target.value }))} />
               </label>
-              <button type="submit" disabled={savingRange}>{savingRange ? 'Adding…' : 'Add Range'}</button>
+              <div style={{ gridColumn: '1 / -1' }}>
+                {canEditRangeText ? <NormalRangeTextBoxes form={rangeDraft} setForm={setRangeDraft} /> : <RangeTextsReadOnly param={manageParam} />}
+              </div>
+              <button type="submit" disabled={savingRange}>{savingRange ? 'Saving…' : 'Save'}</button>
             </form>
             {rangeError && <p className="error-text">{rangeError}</p>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>

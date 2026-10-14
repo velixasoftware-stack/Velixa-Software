@@ -115,65 +115,46 @@ export function rangeLabel(p) {
 }
 
 /**
- * Edit an existing parameter's printed Normal Ranges (Manage ranges dialog).
- * canEdit false (a universal parameter seen from a client) shows them read-only.
+ * Manage ranges dialog: the three boxes' draft for an existing parameter.
+ * Starts from the saved text; a box with nothing saved yet fills itself from
+ * the saved ranges plus the range being typed (newRange), until edited.
  */
-export function ManageRangeText({ param, apiBase, canEdit, onSaved }) {
-  const fromParam = () => ({
+export function useManageRangeDraft(param, newRange) {
+  const init = () => ({
     normalRangeText: param.normalRangeText || '',
     normalRangeTextMale: param.normalRangeTextMale || '',
     normalRangeTextFemale: param.normalRangeTextFemale || '',
+    rangeTextEdited: !!param.normalRangeText,
+    rangeTextMaleEdited: !!param.normalRangeTextMale,
+    rangeTextFemaleEdited: !!param.normalRangeTextFemale,
   });
-  const [draft, setDraft] = useState(fromParam);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
-  useEffect(() => { setDraft(fromParam()); setMsg(''); }, [param.id, param.normalRangeText, param.normalRangeTextMale, param.normalRangeTextFemale]); // eslint-disable-line react-hooks/exhaustive-deps
-  const auto = autoRangeTexts(param.normalRangeLow, param.normalRangeHigh, param.ParameterNormalRanges || []);
-  const suggested = { normalRangeText: auto.common, normalRangeTextMale: auto.male, normalRangeTextFemale: auto.female };
+  const [draft, setDraft] = useState(init);
+  useEffect(() => { setDraft(init()); }, [param.id, param.normalRangeText, param.normalRangeTextMale, param.normalRangeTextFemale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const typing = newRange && (newRange.normalRangeLow || newRange.normalRangeHigh) ? [newRange] : [];
+  useAutoRangeText(draft, setDraft, param.normalRangeLow, param.normalRangeHigh, [...(param.ParameterNormalRanges || []), ...typing]);
+  return [draft, setDraft];
+}
 
-  async function save() {
-    setSaving(true);
-    setMsg('');
-    try {
-      await api.put(`${apiBase}/parameters/${param.id}/normal-range-text`, draft);
-      setMsg('Saved');
-      onSaved?.();
-    } catch (err) {
-      setMsg(err.response?.data?.message || 'Could not save');
-    } finally {
-      setSaving(false);
-    }
-  }
+/** Whether the draft differs from what's saved on the parameter. */
+export function rangeTextsChanged(param, draft) {
+  return FIELDS.some((f) => (draft[f.key] || '').trim() !== (param[f.key] || '').trim());
+}
 
-  if (!canEdit) {
-    return (
-      <div style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
-        Printed on report (universal parameter - set by Chief Admin):
-        {FIELDS.map((fld) => (
-          <div key={fld.key} style={{ whiteSpace: 'pre-wrap' }}><strong>{fld.label}:</strong> {param[fld.key] || suggested[fld.key] || '—'}</div>
-        ))}
-      </div>
-    );
-  }
-  const differs = FIELDS.some((fld) => suggested[fld.key] && draft[fld.key] !== suggested[fld.key]);
+/** Save the three boxes for an existing parameter. */
+export function saveRangeTexts(apiBase, paramId, draft) {
+  return api.put(`${apiBase}/parameters/${paramId}/normal-range-text`, {
+    normalRangeText: draft.normalRangeText, normalRangeTextMale: draft.normalRangeTextMale, normalRangeTextFemale: draft.normalRangeTextFemale,
+  });
+}
+
+/** Read-only view of a universal parameter's printed ranges (seen from a client). */
+export function RangeTextsReadOnly({ param }) {
   return (
-    <div style={{ margin: '0 0 12px' }}>
-      <span style={{ fontWeight: 600, fontSize: 13 }}>Normal Range (as printed on the report)</span>
-      <div className="range-text-grid" style={{ marginTop: 6 }}>
-        {FIELDS.map((fld) => (
-          <RangeBox key={fld.key} label={fld.label} value={draft[fld.key]} onChange={(v) => setDraft((d) => ({ ...d, [fld.key]: v }))} />
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-        <button type="button" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Normal Range'}</button>
-        {differs && (
-          <button type="button" className="secondary" onClick={() => setDraft((d) => ({ ...d, ...Object.fromEntries(FIELDS.filter((f) => suggested[f.key]).map((f) => [f.key, suggested[f.key]])) }))}>
-            Fill from ranges
-          </button>
-        )}
-        {msg && <span style={{ fontSize: 12, color: msg === 'Saved' ? '#15803d' : '#b91c1c' }}>{msg}</span>}
-      </div>
-      <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>A male/female box left empty prints Common; all empty prints the low - high range.</p>
+    <div style={{ fontSize: 13, color: '#64748b', gridColumn: '1 / -1' }}>
+      Printed on report (universal parameter - set by Chief Admin):
+      {FIELDS.map((fld) => (
+        <div key={fld.key} style={{ whiteSpace: 'pre-wrap' }}><strong>{fld.label}:</strong> {param[fld.key] || '—'}</div>
+      ))}
     </div>
   );
 }
