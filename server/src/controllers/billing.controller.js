@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Bill, BillItem, Refund, BillDiscount, DuePayment, ClientTestPrice, TestMaster, Sample, Report, Patient,
-  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName, Package,
+  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName, Package, PayorInvoice, PayorInvoiceItem,
 } = require('../models');
 const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
@@ -303,6 +303,14 @@ async function getBill(req, res) {
   const { clientId } = req.user;
   const bill = await Bill.findOne({ where: { id: req.params.id, clientId }, include: [...billIncludes, Client] });
   if (!bill) return res.status(404).json({ message: 'Bill not found' });
+  // A credit bill's payment status comes from the payor invoice it was put
+  // on: DUE until invoiced, then the invoice's PENDING / PARTIALLY_COLLECTED
+  // / COLLECTED - shown on the receipt instead of "Paid by Patient".
+  if (bill.payorId) {
+    const invItem = await PayorInvoiceItem.findOne({ where: { billId: bill.id }, include: [PayorInvoice] });
+    bill.setDataValue('payorStatus', invItem?.PayorInvoice?.status || 'DUE');
+    bill.setDataValue('payorInvoiceNo', invItem?.PayorInvoice?.invoiceNo || null);
+  }
   // Per-test charge after the bill discount, and the active tests' share of
   // the discount - see utils/billCharges.js.
   return res.json(withCharges(bill));

@@ -743,7 +743,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
   border-top: 1px solid #1a1a1a;
 }
 .bill-receipt-words { font-size: 13px; line-height: 1.7; margin: 0; }
-.bill-receipt-summary { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 13px; flex-shrink: 0; }
+.bill-receipt-summary { display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-size: 13px; flex-shrink: 0; margin-left: auto; } /* right-aligned even with no "Received with thanks" text beside it (credit bills); rows share one width */
 .bill-receipt-summary > div { display: flex; gap: 14px; min-width: 240px; justify-content: space-between; }
 .bill-receipt-summary span { color: #475569; }
 .bill-receipt-summary strong { font-weight: 700; }

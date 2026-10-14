@@ -199,7 +199,20 @@ export default function EditOrder() {
               <div className="review-box-row"><span>Total (all tests)</span><span>₹{money(bill.money.gross)}</span></div>
               <div className="review-box-row"><span>Discount</span><span>₹{money(bill.money.billingDiscount)}</span></div>
               <div className="review-box-row"><span>Bill Amount</span><span>₹{money(bill.money.billAmount)}</span></div>
-              <div className="review-box-row"><span>Paid by Patient</span><span>₹{money(bill.money.paidByPatient)}</span></div>
+              {bill.money.credit ? (
+                // Credit bill - the payor pays through its invoice, not the patient.
+                <>
+                  <div className="review-box-row"><span>Billed to {bill.money.credit.payorName} (credit)</span><span>₹{money(bill.money.credit.amount)}</span></div>
+                  <div className="review-box-row">
+                    <span>Payment Status</span>
+                    <span style={{ color: bill.money.credit.status === 'COLLECTED' ? '#15803d' : '#dc2626', fontWeight: 700 }}>
+                      {{ DUE: 'Payment Due', PENDING: 'Payment Due - invoiced', PARTIALLY_COLLECTED: 'Partially Collected', COLLECTED: 'Collected' }[bill.money.credit.status] || 'Payment Due'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="review-box-row"><span>Paid by Patient</span><span>₹{money(bill.money.paidByPatient)}</span></div>
+              )}
               {bill.money.refunded > 0 && <div className="review-box-row"><span>Refunded</span><span>₹{money(bill.money.refunded)}</span></div>}
               {(bill.money.refunded > 0 || bill.money.postDiscountPaidOut > 0) && (
                 <div className="review-box-row">

@@ -91,6 +91,18 @@ function moneySummary(json, items, charges) {
   const cancelledValue = round2(items.filter((i) => i.status === 'CANCELLED').reduce((s, i) => s + (charges.get(i.id)?.charge || 0), 0));
   const kept = round2(Number(json.paidAmount) || 0);
   const due = round2(Number(json.dueAmount) || 0);
+  // A credit (payor) bill: paidAmount there means "amount to invoice the
+  // payor", not money from the patient - the patient paid nothing, and the
+  // payor pays later through its invoice (status from withPayorStatus).
+  if (json.payorId) {
+    const refundedCredit = round2(items.reduce((s, i) => s + (charges.get(i.id)?.refunded || 0), 0));
+    return {
+      gross, billingDiscount, tax, billAmount, postDiscount, postDiscountPaidOut: 0,
+      paidByPatient: 0, refunded: refundedCredit, cancelledValue: round2(items.filter((i) => i.status === 'CANCELLED').reduce((s, i) => s + (charges.get(i.id)?.charge || 0), 0)),
+      netKept: 0, due: 0, excessRefund: 0,
+      credit: { payorName: json.Payor?.name || 'Payor', amount: kept, status: json.payorStatus || 'DUE', invoiceNo: json.payorInvoiceNo || null },
+    };
+  }
   const paidByPatient = round2(Math.min(kept + refunded + postDiscountPaidOut, Math.max(0, billAmount - due)));
   const netKept = round2(paidByPatient - refunded - postDiscountPaidOut);
   return {

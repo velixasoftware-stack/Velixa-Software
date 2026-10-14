@@ -31,6 +31,14 @@ function itemStatus(item) {
   return `${item.status === 'CANCELLED' ? 'Cancelled' : 'Active'}${refunded > 0 ? ` (₹${refunded.toFixed(2)} refunded)` : ''}`;
 }
 
+// A credit bill's payment status (from the payor invoice it was put on).
+const CREDIT_STATUS = {
+  DUE: 'Payment Due',
+  PENDING: 'Payment Due - invoiced',
+  PARTIALLY_COLLECTED: 'Partially Collected',
+  COLLECTED: 'Collected',
+};
+
 // The printable Bill/Receipt layout - shared verbatim between Front Desk
 // (right after a bill is generated) and Orders' "Print Bill" button, so the
 // two can never drift into different-looking receipts again.
@@ -56,7 +64,8 @@ export default function BillReceiptSheet({ bill }) {
   // Desk has no cancellations/refunds yet and uses the simple layout below.
   const m = bill.money || null;
   const fmt = (n) => Number(n || 0).toFixed(2);
-  const receivedShown = m ? fmt(m.paidByPatient) : bill.paidAmount;
+  // Nothing is "received" from the patient on a credit (payor) bill.
+  const receivedShown = m ? fmt(m.paidByPatient) : (bill.payorId ? 0 : bill.paidAmount);
   // Gross + Net (after its share of the discount/GST) per test, whenever the
   // bill has a discount or GST - Net is the amount actually paid for that test.
   const showNet = (Number(bill.discount) > 0 || Number(bill.taxAmount) > 0)
@@ -173,7 +182,18 @@ export default function BillReceiptSheet({ bill }) {
               )}
               <div className="bill-receipt-net"><span>Bill Amount</span><strong>₹{fmt(m.billAmount)}</strong></div>
               {m.postDiscount > 0 && <div><span>Post-Billing Discount</span><strong>− ₹{fmt(m.postDiscount)}</strong></div>}
-              <div><span>Paid by Patient</span><strong>₹{fmt(m.paidByPatient)}</strong></div>
+              {m.credit ? (
+                // Credit bill: the payor pays through its invoice, not the patient.
+                <>
+                  <div><span>Billed to {m.credit.payorName} (credit)</span><strong>₹{fmt(m.credit.amount)}</strong></div>
+                  <div className={m.credit.status === 'COLLECTED' ? '' : 'bill-receipt-due'}>
+                    <span>Payment Status</span>
+                    <strong>{CREDIT_STATUS[m.credit.status] || 'Payment Due'}{m.credit.invoiceNo ? ` (${m.credit.invoiceNo})` : ''}</strong>
+                  </div>
+                </>
+              ) : (
+                <div><span>Paid by Patient</span><strong>₹{fmt(m.paidByPatient)}</strong></div>
+              )}
               {m.refunded > 0 && (
                 <div>
                   <span>Refunded (cancelled tests{m.cancelledValue > 0 ? `, worth ₹${fmt(m.cancelledValue)}` : ''})</span>
