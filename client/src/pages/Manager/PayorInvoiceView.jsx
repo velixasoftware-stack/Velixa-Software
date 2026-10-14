@@ -116,7 +116,7 @@ export default function PayorInvoiceView() {
         <h3 style={{ marginTop: 24 }}>Summary (by Patient / Order)</h3>
         <table>
           <thead>
-            <tr><th>Patient Name</th><th>Order No</th><th>Tests</th><th>Original Price</th><th>Assigned Price</th><th>Difference</th></tr>
+            <tr><th>Patient Name</th><th>Order No</th><th>Tests</th><th className="no-print">Original Price</th><th>Assigned Price</th><th className="no-print">Difference</th></tr>
           </thead>
           <tbody>
             {summaryRows.map((row) => (
@@ -124,9 +124,9 @@ export default function PayorInvoiceView() {
                 <td>{row.patientName}</td>
                 <td>{row.billNo}</td>
                 <td>{row.testCount}</td>
-                <td>₹{formatMoney(row.totalOriginal)}</td>
+                <td className="no-print">₹{formatMoney(row.totalOriginal)}</td>
                 <td>₹{formatMoney(row.totalAssigned)}</td>
-                <td style={row.totalDifference > 0 ? { color: '#166534' } : undefined}>₹{formatMoney(row.totalDifference)}</td>
+                <td className="no-print" style={row.totalDifference > 0 ? { color: '#166534' } : undefined}>₹{formatMoney(row.totalDifference)}</td>
               </tr>
             ))}
             {summaryRows.length === 0 && <tr><td colSpan={6}>No line items.</td></tr>}
@@ -136,7 +136,7 @@ export default function PayorInvoiceView() {
         <h3 style={{ marginTop: 24 }}>Detailed Line Items</h3>
         <table>
           <thead>
-            <tr><th>Patient Name</th><th>Order No</th><th>Test</th><th>Original Price</th><th>Assigned Price</th><th>Difference</th></tr>
+            <tr><th>Patient Name</th><th>Order No</th><th>Test</th><th className="no-print">Original Price</th><th>Assigned Price</th><th className="no-print">Difference</th></tr>
           </thead>
           <tbody>
             {items.map((item) => (
@@ -144,9 +144,9 @@ export default function PayorInvoiceView() {
                 <td>{item.patientName || '—'}</td>
                 <td>{item.billNo || '—'}</td>
                 <td>{item.testName}</td>
-                <td>₹{formatMoney(item.originalPrice)}</td>
+                <td className="no-print">₹{formatMoney(item.originalPrice)}</td>
                 <td>₹{formatMoney(item.assignedPrice)}</td>
-                <td style={Number(item.difference) > 0 ? { color: '#166534' } : undefined}>₹{formatMoney(item.difference)}</td>
+                <td className="no-print" style={Number(item.difference) > 0 ? { color: '#166534' } : undefined}>₹{formatMoney(item.difference)}</td>
               </tr>
             ))}
             {items.length === 0 && <tr><td colSpan={6}>No line items.</td></tr>}
@@ -154,7 +154,8 @@ export default function PayorInvoiceView() {
         </table>
 
         <div className="pay-stat-row" style={{ marginTop: 16 }}>
-          <div className="pay-stat-tile"><div className="label">Original Total</div><div className="value">₹{formatMoney(invoice.totalOriginal)}</div></div>
+          {/* Original prices are internal - shown on screen, never on the printed invoice. */}
+          <div className="pay-stat-tile no-print"><div className="label">Original Total</div><div className="value">₹{formatMoney(invoice.totalOriginal)}</div></div>
           <div className="pay-stat-tile"><div className="label">Assigned Total</div><div className="value">₹{formatMoney(invoice.totalAssigned)}</div></div>
           <div className="pay-stat-tile"><div className="label">Collected</div><div className="value">₹{formatMoney(invoice.totalCollected)}</div></div>
           <div className="pay-stat-tile discount"><div className="label">Deduction</div><div className="value">₹{formatMoney(invoice.totalDeduction)}</div></div>
