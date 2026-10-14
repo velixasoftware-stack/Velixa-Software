@@ -57,6 +57,10 @@ export default function BillReceiptSheet({ bill }) {
   const m = bill.money || null;
   const fmt = (n) => Number(n || 0).toFixed(2);
   const receivedShown = m ? fmt(m.paidByPatient) : bill.paidAmount;
+  // Gross + Net (after its share of the discount/GST) per test, whenever the
+  // bill has a discount or GST - Net is the amount actually paid for that test.
+  const showNet = (Number(bill.discount) > 0 || Number(bill.taxAmount) > 0)
+    && bill.BillItems.every((it) => it.charge != null);
   // Branding details (set from Report Branding) are what's shown on a bill -
   // deliberately separate from the clientName/address/mobile/email Chief
   // Admin set at client creation, falling back to those only until this
@@ -93,7 +97,7 @@ export default function BillReceiptSheet({ bill }) {
         <h3 className="bill-receipt-title">Bill Cum Receipt</h3>
 
         <table className="bill-receipt-table">
-          <thead><tr><th>S.No</th><th>Service Name</th><th>Barcode</th><th>Amount</th><th>Status</th></tr></thead>
+          <thead><tr><th>S.No</th><th>Service Name</th><th>Barcode</th>{showNet ? <><th>Gross</th><th title="After its share of the discount / GST">Net</th></> : <th>Amount</th>}<th>Status</th></tr></thead>
           <tbody>
             {receiptLines(bill.BillItems).map((line, i) => {
               const cancelledStyle = { textDecoration: 'line-through', color: '#94a3b8' };
@@ -105,6 +109,7 @@ export default function BillReceiptSheet({ bill }) {
                     <td style={allCancelled ? cancelledStyle : undefined}><strong>{line.pkg.packageName}</strong> (Package)</td>
                     <td />
                     <td>₹{line.items.reduce((s, it) => s + Number(it.price), 0).toFixed(2)}</td>
+                    {showNet && <td><strong>₹{line.items.reduce((s, it) => s + Number(it.charge || 0), 0).toFixed(2)}</strong></td>}
                     <td>{allCancelled ? 'Cancelled' : 'Active'}</td>
                   </tr>,
                   ...line.items.map((item) => (
@@ -113,6 +118,7 @@ export default function BillReceiptSheet({ bill }) {
                       <td style={item.status === 'CANCELLED' ? cancelledStyle : { color: '#475569' }}>↳ {item.TestMaster?.testName}</td>
                       <td>{item.Sample?.barcode}</td>
                       <td style={{ color: '#94a3b8' }}>Included</td>
+                      {showNet && <td />}
                       <td>{itemStatus(item)}</td>
                     </tr>
                   )),
@@ -125,13 +131,19 @@ export default function BillReceiptSheet({ bill }) {
                   <td style={item.status === 'CANCELLED' ? cancelledStyle : undefined}>{item.TestMaster?.testName}</td>
                   <td>{item.Sample?.barcode}</td>
                   <td>₹{item.price}</td>
+                  {showNet && <td><strong>₹{Number(item.charge || 0).toFixed(2)}</strong></td>}
                   <td>{itemStatus(item)}</td>
                 </tr>
               );
             })}
             <tr className="bill-receipt-total-row">
               <td colSpan={3}>Total</td>
-              <td colSpan={2}>₹{bill.totalAmount}</td>
+              {showNet ? (
+                <>
+                  <td>₹{bill.totalAmount}</td>
+                  <td colSpan={2}>₹{fmt(bill.BillItems.reduce((s, it) => s + Number(it.charge || 0), 0))}</td>
+                </>
+              ) : <td colSpan={2}>₹{bill.totalAmount}</td>}
             </tr>
           </tbody>
         </table>

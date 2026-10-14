@@ -184,6 +184,30 @@ export default function FrontDesk() {
   const cgstAmount = Math.round(taxAmount * 50) / 100;
   const sgstAmount = Math.round((taxAmount - cgstAmount) * 100) / 100;
   const netPayable = taxableAmount + taxAmount;
+  // Each line's amount after its share of the discount (and GST), split by
+  // price exactly as the bill/receipt does (server utils/billCharges.js) -
+  // shown beside the price as "₹50 → ₹43.75". The last line takes the
+  // paise rounding so the lines add up to Net Payable.
+  const showNet = gross > 0 && Math.abs(netPayable - gross) > 0.001;
+  const netByLine = (() => {
+    const lines = [
+      ...chosenPackages.map((pkg) => [`pkg-${pkg.id}`, Number(pkg.price)]),
+      ...selectedPrices.map((p) => [`t-${p.testId}`, effectivePrice(p)]),
+    ];
+    const out = {};
+    let allocated = 0;
+    lines.forEach(([key, price], i) => {
+      const share = i === lines.length - 1
+        ? Math.round((netPayable - allocated) * 100) / 100
+        : Math.round((gross > 0 ? netPayable * price / gross : 0) * 100) / 100;
+      allocated = Math.round((allocated + share) * 100) / 100;
+      out[key] = share;
+    });
+    return out;
+  })();
+  const priceCell = (price, key) => (showNet
+    ? <span className="fd-price-net" title="Price → after its share of the discount/GST"><s>₹{price}</s> → <strong>₹{netByLine[key].toFixed(2)}</strong></span>
+    : <>₹{price}</>);
   // Full amount by default (unchanged behaviour); "record a due balance" lets
   // less than netPayable be collected now, the rest recovered later from
   // Orders. Doesn't apply to credit billing - a payor bill is never "due"
@@ -426,7 +450,7 @@ export default function FrontDesk() {
                       <span style={{ color: '#64748b', fontSize: 12 }}> · {pkg.TestMasters.length} test(s) included</span>
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      ₹{Number(pkg.price)}
+                      {priceCell(Number(pkg.price), `pkg-${pkg.id}`)}
                       <button type="button" onClick={() => removePackage(pkg.id)}>Remove</button>
                     </span>
                   </div>
@@ -456,7 +480,7 @@ export default function FrontDesk() {
                       placeholder="Barcode (optional, scan or type)"
                       style={{ width: 190 }}
                     />
-                    ₹{effectivePrice(p)}
+                    {priceCell(effectivePrice(p), `t-${p.testId}`)}
                     <button type="button" onClick={() => removeTest(p.testId)}>Remove</button>
                   </span>
                 </div>
