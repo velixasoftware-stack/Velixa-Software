@@ -14,6 +14,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(authenticate, requireActiveSubscription, requireRole(ROLES.MASTER_MANAGER));
 
 // Test Master (global, unique across all clients)
+router.get('/groups', testCtrl.listTestGroups); // Chief-Admin-created groups (read only here)
 router.get('/tests', testCtrl.listTests);
 router.post('/tests', testCtrl.createTest);
 router.put('/tests/:id', testCtrl.updateTest);
@@ -32,7 +33,6 @@ router.get('/client-test-price/template', priceCtrl.downloadTemplate);
 router.post('/client-test-price/upload/preview', upload.single('file'), priceCtrl.previewUpload);
 router.post('/client-test-price/upload/commit', priceCtrl.commitUpload);
 router.put('/client-test-price/:testId/status', priceCtrl.setPriceStatus);
-router.delete('/client-test-price/:testId', priceCtrl.removeClientTest);
 
 // Packages (client-wise bundles of tests with their own price)
 router.get('/packages', packageCtrl.listPackages);

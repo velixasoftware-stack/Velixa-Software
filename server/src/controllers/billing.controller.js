@@ -7,6 +7,8 @@ const {
 const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
+const { fastingPostLunchConflict } = require('../utils/testType');
+const { isBillableForClient } = require('../utils/testStatus');
 
 /**
  * Next bill number for a client: its Client Code immediately followed by a
@@ -95,7 +97,7 @@ async function createBill(req, res) {
   if (prices.length !== testIdList.length) {
     return res.status(400).json({ message: 'Price not configured for one or more selected tests' });
   }
-  const inactive = prices.filter((p) => !p.active || !p.TestMaster?.active);
+  const inactive = prices.filter((p) => !isBillableForClient(p, p.TestMaster));
   if (inactive.length) {
     return res.status(400).json({ message: `Inactive test(s) can't be billed: ${inactive.map((p) => p.TestMaster?.testName).join(', ')}` });
   }
@@ -139,7 +141,9 @@ async function createBill(req, res) {
     const onBill = new Map(prices.map((p) => [p.testId, 'selected on its own']));
     for (const pkg of packages) {
       for (const t of pkg.TestMasters) {
-        if (!t.active || stdPriceByTestId.get(t.id)?.active === false) {
+        // No price row of its own = billable only through the package, and only while Chief Admin has it Active.
+        const row = stdPriceByTestId.get(t.id);
+        if (row ? !isBillableForClient(row, t) : !t.active) {
           return res.status(400).json({ message: `Package ${pkg.packageName} contains an inactive test: ${t.testName}` });
         }
         if (onBill.has(t.id)) {
@@ -213,6 +217,14 @@ async function createBill(req, res) {
   for (const [, code] of manualBarcodes) {
     const existing = await Sample.findOne({ where: { barcode: code.toString().trim() } });
     if (existing) return res.status(400).json({ message: `Barcode "${code}" is already in use by another sample` });
+  }
+  // A barcode marks its sample collected right now, so the Fasting/Post Lunch
+  // rule applies here too - only one of the two may be scanned at billing.
+  const scannedTestIds = lines.filter((l) => barcodes?.[l.testId]?.toString().trim()).map((l) => l.testId);
+  if (scannedTestIds.length > 1) {
+    const scannedTests = await TestMaster.findAll({ where: { id: scannedTestIds }, attributes: ['testName', 'testType'] });
+    const conflict = fastingPostLunchConflict(scannedTests);
+    if (conflict) return res.status(400).json({ message: `${conflict} Remove the barcode from one of them.` });
   }
 
   // Guard against duplicate bills from a rapid double-click / double-submit:
@@ -314,7 +326,7 @@ async function addBillItem(req, res) {
 
   const priceRow = await ClientTestPrice.findOne({ where: { clientId, testId }, include: [TestMaster] });
   if (!priceRow) return res.status(400).json({ message: 'Price not configured for this test' });
-  if (!priceRow.active || !priceRow.TestMaster?.active) return res.status(400).json({ message: 'This test is inactive and can\'t be billed' });
+  if (!isBillableForClient(priceRow, priceRow.TestMaster)) return res.status(400).json({ message: 'This test is inactive and can\'t be billed' });
 
   const existingActive = await BillItem.findOne({ where: { billId: bill.id, testId, status: 'ACTIVE' } });
   if (existingActive) return res.status(409).json({ message: 'This test is already active on this bill' });
@@ -632,12 +644,12 @@ async function listBills(req, res) {
 async function listTestPrices(req, res) {
   const { clientId } = req.user;
   const [prices, shortNames] = await Promise.all([
-    // Only tests active both for this client and in the shared Test Master.
-    ClientTestPrice.findAll({ where: { clientId, active: true }, include: [{ model: TestMaster, where: { active: true } }] }),
+    // Only tests this client can bill - see isBillableForClient.
+    ClientTestPrice.findAll({ where: { clientId, active: true }, include: [TestMaster] }),
     ClientTestShortName.findAll({ where: { clientId } }),
   ]);
   const shortNameByTestId = new Map(shortNames.map((s) => [s.testId, s.shortName]));
-  const data = prices.map((p) => ({ ...p.toJSON(), shortName: shortNameByTestId.get(p.testId) || null }));
+  const data = prices.filter((p) => isBillableForClient(p, p.TestMaster)).map((p) => ({ ...p.toJSON(), shortName: shortNameByTestId.get(p.testId) || null }));
   return res.json(data);
 }
 
@@ -648,11 +660,14 @@ async function listPackages(req, res) {
   const { clientId } = req.user;
   const [packages, prices] = await Promise.all([
     Package.findAll({ where: { clientId, active: true }, include: [TestMaster], order: [['packageName', 'ASC']] }),
-    ClientTestPrice.findAll({ where: { clientId }, attributes: ['testId', 'active'] }),
+    ClientTestPrice.findAll({ where: { clientId }, attributes: ['testId', 'active', 'overrideChiefInactive'] }),
   ]);
-  const clientInactive = new Set(prices.filter((p) => !p.active).map((p) => p.testId));
+  const priceByTestId = new Map(prices.map((p) => [p.testId, p]));
   const billable = packages.filter((pkg) => pkg.TestMasters.length > 0
-    && pkg.TestMasters.every((t) => t.active && !clientInactive.has(t.id)));
+    && pkg.TestMasters.every((t) => {
+      const row = priceByTestId.get(t.id);
+      return row ? isBillableForClient(row, t) : t.active;
+    }));
   return res.json(billable);
 }
 

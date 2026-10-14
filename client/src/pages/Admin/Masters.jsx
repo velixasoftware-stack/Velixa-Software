@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import SearchSelect from '../../components/SearchSelect';
+import StatusSwitch from '../../components/StatusSwitch';
 import { downloadFile } from '../../utils/download';
+import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 
 // Horizontal tabs instead of one long vertical page - each master task
 // (tests, prices, packages, bulk upload) gets the full width on its own.
@@ -12,6 +14,10 @@ const MASTER_TABS = [
   { key: 'bulk', label: 'Bulk Upload' },
 ];
 
+function blankTest() {
+  return { testCode: '', testName: '', category: '', testType: 'REGULAR' };
+}
+
 function blankPackage() {
   return { packageCode: '', packageName: '', price: '', testIds: [] };
 }
@@ -20,7 +26,8 @@ export default function Masters() {
   const [tests, setTests] = useState([]);
   const [prices, setPrices] = useState([]);
   const [packages, setPackages] = useState([]);
-  const [newTest, setNewTest] = useState({ testCode: '', testName: '' });
+  const [newTest, setNewTest] = useState(blankTest());
+  const [groups, setGroups] = useState([]); // service groups created by Chief Admin
   const [priceForm, setPriceForm] = useState({ testId: '', price: '' });
   const [packageForm, setPackageForm] = useState(blankPackage());
 
@@ -48,13 +55,27 @@ export default function Masters() {
     setPackages(packagesRes.data);
   }
 
-  useEffect(() => { loadAll(); }, []);
+  // Re-fetched whenever the dropdown is opened too, so a service group Chief
+  // Admin creates while this screen is open shows up without a page reload.
+  function loadGroups() {
+    api.get('/masters/groups').then((r) => setGroups(r.data)).catch(() => {});
+  }
+
+  useEffect(() => {
+    loadAll();
+    loadGroups();
+  }, []);
 
   async function handleCreateTest(e) {
     e.preventDefault();
-    await api.post('/masters/tests', newTest);
-    setNewTest({ testCode: '', testName: '' });
-    loadAll();
+    setError('');
+    try {
+      await api.post('/masters/tests', newTest);
+      setNewTest(blankTest());
+      loadAll();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create test');
+    }
   }
 
   async function handleSetPrice(e) {
@@ -128,40 +149,41 @@ export default function Masters() {
   }
 
   // Active/Inactive here is for this clinic only - the shared Test Master and
-  // other clinics are untouched. A test Chief Admin made inactive can't be
-  // switched back on from here.
-  async function toggleClientTest(test, priceRow) {
-    const turningOff = priceRow.active !== false;
-    if (!window.confirm(turningOff
-      ? `Mark "${test.testName}" Inactive for your clinic?\n\nIt can't be billed until you make it Active again. Old bills and reports keep it.`
-      : `Make "${test.testName}" Active again for your clinic?`)) return;
+  // other clinics are untouched. Switching Active a test Chief Admin made
+  // Inactive turns it back on for this clinic alone (an override).
+  async function setClientTestActive(test, active) {
+    const chiefOff = test.active === false;
+    if (!window.confirm(active
+      ? `Make "${test.testName}" Active for your clinic?${chiefOff ? '\n\nChief Admin has switched this test off for all clinics - this turns it back on for your clinic only.' : ''}`
+      : `Mark "${test.testName}" Inactive for your clinic?\n\nIt can't be billed until you make it Active again. Old bills and reports keep it.`)) return;
     try {
-      await api.put(`/masters/client-test-price/${test.id}/status`, { active: !turningOff });
+      await api.put(`/masters/client-test-price/${test.id}/status`, { active });
       loadAll();
     } catch (err) {
       window.alert(err.response?.data?.message || 'Could not change the test status');
     }
   }
 
-  async function removeClientTest(test) {
-    if (!window.confirm(`Remove "${test.testName}" from your clinic?
-
-This deletes your clinic's price, short name and payor prices for it, and takes it out of your packages. Bills already made are not changed.`)) return;
-    try {
-      await api.delete(`/masters/client-test-price/${test.id}`);
-      loadAll();
-    } catch (err) {
-      window.alert(err.response?.data?.message || 'Could not remove the test');
-    }
-  }
-
   const priceRowByTestId = new Map(prices.map((p) => [p.testId ?? p.TestMaster?.id, p]));
+
+  // Mirrors the server's isBillableForClient (utils/testStatus.js).
+  const isActiveForClinic = (test, row) => !!row && row.active !== false && (test.active !== false || !!row.overrideChiefInactive);
 
   function testStatus(test) {
     const row = priceRowByTestId.get(test.id);
-    if (test.active === false) return <span className="badge EXPIRED" title="Switched off by Chief Admin for all clinics">Inactive (Chief Admin)</span>;
-    if (!row) return <span className="badge PENDING">No price</span>;
-    return row.active === false ? <span className="badge EXPIRED">Inactive</span> : <span className="badge PAID">Active</span>;
+    if (!row) {
+      return test.active === false
+        ? <span className="badge EXPIRED" title="Switched off by Chief Admin for all clinics">Inactive (Chief Admin)</span>
+        : <span className="badge PENDING">No price</span>;
+    }
+    if (isActiveForClinic(test, row)) {
+      return test.active === false
+        ? <span className="badge PAID" title="Chief Admin has this test off for all clinics - your clinic switched it back on">Active (your clinic)</span>
+        : <span className="badge PAID">Active</span>;
+    }
+    return row.active === false
+      ? <span className="badge EXPIRED">Inactive</span>
+      : <span className="badge EXPIRED" title="Switched off by Chief Admin for all clinics - switch it Active to use it in your clinic">Inactive (Chief Admin)</span>;
   }
 
   function testActions(test) {
@@ -169,12 +191,7 @@ This deletes your clinic's price, short name and payor prices for it, and takes 
     if (!row) return null;
     return (
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-        {test.active !== false && (
-          <button type="button" className="secondary" onClick={() => toggleClientTest(test, row)}>
-            {row.active === false ? 'Make Active' : 'Make Inactive'}
-          </button>
-        )}
-        <button type="button" className="danger" onClick={() => removeClientTest(test)}>Remove</button>
+        <StatusSwitch active={isActiveForClinic(test, row)} onChange={(active) => setClientTestActive(test, active)} />
       </div>
     );
   }
@@ -211,17 +228,32 @@ This deletes your clinic's price, short name and payor prices for it, and takes 
           <form onSubmit={handleCreateTest} className="masters-row">
             <label><span>Test Code</span><input value={newTest.testCode} onChange={(e) => setNewTest((f) => ({ ...f, testCode: e.target.value }))} required /></label>
             <label className="grow"><span>Test Name</span><input value={newTest.testName} onChange={(e) => setNewTest((f) => ({ ...f, testName: e.target.value }))} required /></label>
+            <label><span>Service Group</span>
+              <select value={newTest.category} onFocus={loadGroups} onChange={(e) => setNewTest((f) => ({ ...f, category: e.target.value }))} required>
+                <option value="">— Select —</option>
+                {groups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+              </select>
+            </label>
+            <label><span>Test Type</span>
+              <select value={newTest.testType} onChange={(e) => setNewTest((f) => ({ ...f, testType: e.target.value }))} required>
+                {TEST_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
             <button type="submit">Add Test</button>
             <input className="masters-search" placeholder="Search tests…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </form>
+          {error && <p className="error-text">{error}</p>}
+          {groups.length === 0 && <p className="cell-sub">No service groups yet - Chief Admin creates them under Test Master.</p>}
           <div className="masters-table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Code</th><th>Name</th><th>Parameters</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Name</th><th>Group</th><th>Type</th><th>Parameters</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {tests.filter((t) => matches(t.testCode, t.testName)).map((t) => (
                   <tr key={t.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{t.testCode}</td>
                     <td>{t.testName}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{t.category || '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{TEST_TYPE_LABEL[t.testType] || 'Regular'}</td>
                     <td className="cell-sub" style={{ whiteSpace: 'normal' }}>{(t.ParameterMasters || []).map((p) => p.parameterName).join(', ') || '—'}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{testStatus(t)}</td>
                     <td>{testActions(t)}</td>

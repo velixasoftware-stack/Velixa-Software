@@ -2,9 +2,11 @@ const { Op } = require('sequelize');
 const XLSX = require('xlsx');
 const {
   sequelize, TestGroup, TestMaster, ParameterMaster, ParameterNormalRange, BillItem, Result,
-  ClientTestPrice, ClientTestShortName, PayorTestPrice,
+  ClientTestPrice, ClientTestShortName, PayorTestPrice, ClientParameterTrend,
 } = require('../models');
 const { sortParameters } = require('../utils/parameterOrder');
+const { normalizeTestType } = require('../utils/testType');
+const { isBillableForClient } = require('../utils/testStatus');
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Any'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
@@ -42,10 +44,53 @@ async function generateParameterCode() {
   return code;
 }
 
-// GET /api/admin/masters/groups  (Chief Admin only)
+// PUT /api/test-config/parameters/:parameterId/trend  { showTrend }
+// Client-only: whether this parameter's trend prints on this client's patient
+// reports. Stored per parameter, so it applies on every test it's mapped to.
+async function setParameterTrend(req, res) {
+  const clientId = requesterClientId(req);
+  if (!clientId) return res.status(400).json({ message: 'Trend settings are per client' });
+  if (typeof req.body.showTrend !== 'boolean') return res.status(400).json({ message: 'showTrend (true/false) is required' });
+
+  // Only a parameter this client can see: universal, or its own.
+  const parameter = await ParameterMaster.findOne({
+    where: { id: req.params.parameterId, [Op.or]: [{ clientId: null }, { clientId }] },
+  });
+  if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+
+  if (req.body.showTrend) {
+    await ClientParameterTrend.findOrCreate({ where: { clientId, parameterId: parameter.id } });
+  } else {
+    await ClientParameterTrend.destroy({ where: { clientId, parameterId: parameter.id } });
+  }
+  return res.json({ parameterId: parameter.id, showTrend: req.body.showTrend });
+}
+
+// GET /api/admin/masters/groups  (Chief Admin)
+// GET /api/masters/groups        (client MASTER_MANAGER - read only, so a
+// client's own new test is filed under one of Chief Admin's groups)
 async function listTestGroups(req, res) {
-  const groups = await TestGroup.findAll({ order: [['name', 'ASC']] });
-  return res.json(groups);
+  return res.json(await allGroupNames());
+}
+
+// Every service group: the explicitly-created TestGroup rows plus any older
+// group name that only exists as a test's category (from before groups were
+// their own table) - the same merged list Chief Admin's Test Master shows.
+// Case-insensitive de-dupe, keeping the TestGroup spelling where both exist.
+async function allGroupNames() {
+  const groups = await TestGroup.findAll({ attributes: ['id', 'name'] });
+  const categories = await TestMaster.findAll({
+    attributes: [[sequelize.fn('DISTINCT', sequelize.col('category')), 'category']],
+    where: { category: { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: '' }] } },
+    raw: true,
+  });
+  const byKey = new Map();
+  for (const g of groups) byKey.set(g.name.trim().toLowerCase(), { id: g.id, name: g.name });
+  for (const { category } of categories) {
+    const key = category.trim().toLowerCase();
+    if (key && !byKey.has(key)) byKey.set(key, { id: null, name: category.trim() });
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // POST /api/admin/masters/groups  { name }  (Chief Admin only)
@@ -66,11 +111,23 @@ async function createTest(req, res) {
   if (!testCode || !testName) {
     return res.status(400).json({ message: 'testCode and testName are required' });
   }
+  const testType = normalizeTestType(req.body.testType);
+  if (testType === null) return res.status(400).json({ message: 'Test Type must be Regular, Fasting or Post Lunch' });
+
+  // A client's new test must be filed under one of Chief Admin's service
+  // groups (Chief Admin itself may still leave a test Uncategorized).
+  let groupName = category;
+  if (requesterClientId(req)) {
+    const wanted = category?.trim().toLowerCase();
+    const group = wanted && (await allGroupNames()).find((g) => g.name.toLowerCase() === wanted);
+    if (!group) return res.status(400).json({ message: 'Select a Service Group for the test' });
+    groupName = group.name;
+  }
 
   const existing = await TestMaster.findOne({ where: { testCode } });
   if (existing) return res.status(409).json({ message: 'Test Code already exists' });
 
-  const test = await TestMaster.create({ testCode, testName, category, sampleType, interpretation });
+  const test = await TestMaster.create({ testCode, testName, category: groupName, sampleType, testType: testType || 'REGULAR', interpretation });
 
   if (Array.isArray(parameters)) {
     const clientId = requesterClientId(req);
@@ -111,6 +168,17 @@ async function listTests(req, res) {
     order: [['testCode', 'ASC']],
   });
 
+  // This client's "show trend on the report" choice, per parameter.
+  const trended = clientId
+    ? new Set((await ClientParameterTrend.findAll({ where: { clientId }, attributes: ['parameterId'] })).map((r) => r.parameterId))
+    : null;
+  // This client's own Active/Inactive per test (and any override of Chief
+  // Admin's Inactive) - see utils/testStatus.js.
+  const priceRowByTestId = clientId
+    ? new Map((await ClientTestPrice.findAll({ where: { clientId }, attributes: ['testId', 'active', 'overrideChiefInactive'] }))
+      .map((r) => [r.testId, r]))
+    : null;
+
   const result = tests.map((t) => {
     const json = t.toJSON();
     const owned = json.ParameterMasters || [];
@@ -119,6 +187,12 @@ async function listTests(req, res) {
       .filter((p) => !ownedIds.has(p.id))
       .map((p) => ({ ...p, isAssigned: true }));
     json.ParameterMasters = sortParameters([...owned, ...assigned]);
+    if (trended) json.ParameterMasters = json.ParameterMasters.map((p) => ({ ...p, showTrend: trended.has(p.id) }));
+    if (priceRowByTestId) {
+      // No price row yet = follows Chief Admin's switch alone.
+      const row = priceRowByTestId.get(t.id);
+      json.activeForClient = row ? isBillableForClient(row, t) : t.active !== false;
+    }
     delete json.AssignedParameters;
     return json;
   });
@@ -130,6 +204,8 @@ async function updateTest(req, res) {
   const test = await TestMaster.findByPk(req.params.id);
   if (!test) return res.status(404).json({ message: 'Test not found' });
   const { testName, category, sampleType, interpretation } = req.body;
+  const testType = normalizeTestType(req.body.testType);
+  if (testType === null) return res.status(400).json({ message: 'Test Type must be Regular, Fasting or Post Lunch' });
   // Test Master's own active flag switches the test off for every client, so
   // only Chief Admin may change it - a client switches a test off for itself
   // only, via its price row (see clientTestPrice.setPriceStatus).
@@ -138,6 +214,7 @@ async function updateTest(req, res) {
     testName: testName ?? test.testName,
     category: category !== undefined ? category : test.category,
     sampleType: sampleType !== undefined ? sampleType : test.sampleType,
+    testType: testType ?? test.testType,
     interpretation: interpretation !== undefined ? interpretation : test.interpretation,
     active: active ?? test.active,
   });
@@ -865,5 +942,5 @@ async function commitUpload(req, res) {
 
 module.exports = {
   createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
-  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup,
+  downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend,
 };

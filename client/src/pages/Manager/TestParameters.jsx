@@ -55,6 +55,7 @@ export default function TestParameters() {
   const [paramCopySearch, setParamCopySearch] = useState(''); // "copy from an existing parameter" search box in the Add Parameter modal
 
   const [shortNameForm, setShortNameForm] = useState({ testId: '', shortName: '' });
+  const [savingTrendId, setSavingTrendId] = useState(null); // parameter whose Trend tick is saving
 
   const [manageParam, setManageParam] = useState(null); // parameter row whose ranges are being managed
   const [newRange, setNewRange] = useState(emptyRangeRow());
@@ -70,9 +71,12 @@ export default function TestParameters() {
       api.get('/test-config/tests'),
       api.get('/test-config/test-shortname'),
     ]);
-    setTests(testsRes.data);
+    // Only tests active for this clinic (its own switch, or Chief Admin's when
+    // the clinic hasn't overridden it) - inactive ones are hidden here.
+    const activeTests = testsRes.data.filter((t) => t.activeForClient !== false);
+    setTests(activeTests);
     setShortNames(shortNamesRes.data);
-    return { tests: testsRes.data };
+    return { tests: activeTests };
   }
   useEffect(() => { loadAll(); }, []);
 
@@ -229,6 +233,22 @@ export default function TestParameters() {
   }
 
 
+  // Ticks/unticks "show trend on the report" for a parameter. Stored per
+  // parameter, so it changes on every test the parameter is mapped to - the
+  // reload below shows that across the whole test list.
+  async function setParamTrend(p, showTrend) {
+    setError('');
+    setSavingTrendId(p.id);
+    try {
+      await api.put(`/test-config/parameters/${p.id}/trend`, { showTrend });
+      await loadAll();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update the trend setting');
+    } finally {
+      setSavingTrendId(null);
+    }
+  }
+
   // Removes a parameter from the selected test (switched off, or unlinked if
   // it was shared in from another test) - results already released keep it.
   async function removeParam(p) {
@@ -280,7 +300,7 @@ It will no longer appear on result entry. Reports already released keep their va
                 onClick={() => setSelectedTestId(t.id)}
               >
                 <strong>{t.testName}</strong>
-                <span className="meta">{t.category || 'Uncategorized'} · {(t.ParameterMasters || []).length} param(s)</span>
+                <span className="meta"><span className="test-code">{t.testCode}</span> · {t.category || 'Uncategorized'} · {(t.ParameterMasters || []).length} param(s)</span>
               </button>
             ))}
             {filteredTests.length === 0 && <p style={{ fontSize: 13, color: '#94a3b8' }}>No tests found.</p>}
@@ -295,14 +315,14 @@ It will no longer appear on result entry. Reports already released keep their va
                 <div>
                   <h2>{selectedTest.testName}</h2>
                   <p className="meta">
-                    {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} ·{' '}
+                    <span className="test-code">{selectedTest.testCode}</span> · {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} ·{' '}
                     {(selectedTest.ParameterMasters || []).length} parameter(s) configured
                   </p>
                 </div>
                 <button type="button" onClick={openAddParameter}>+ Add Parameter</button>
               </div>
               <table>
-                <thead><tr><th>Seq</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th>Source</th><th></th></tr></thead>
+                <thead><tr><th>Seq</th><th>Code</th><th>Parameter</th><th>Unit</th><th>Range Matrix</th><th>Source</th><th title="Show this parameter's trend on patient reports - applies on every test it's mapped to">Trend</th><th></th></tr></thead>
                 <tbody>
                   {(selectedTest.ParameterMasters || []).map((p) => (
                     <tr key={p.id}>
@@ -321,6 +341,18 @@ It will no longer appear on result entry. Reports already released keep their va
                       <td><RangeMatrix param={p} /></td>
                       <td>{p.clientId ? <span className="badge PENDING_COLLECTION">Your Parameter</span> : <span className="badge PAID">Universal</span>}</td>
                       <td>
+                        {!p.isInterpretation && (
+                          <input
+                            type="checkbox"
+                            style={{ width: 16, height: 16 }}
+                            checked={!!p.showTrend}
+                            disabled={savingTrendId === p.id}
+                            onChange={(e) => setParamTrend(p, e.target.checked)}
+                            title={`Show ${p.parameterName} trend on patient reports - on every test it's mapped to`}
+                          />
+                        )}
+                      </td>
+                      <td>
                         <div className="order-actions">
                           <button type="button" className="secondary icon-btn" title="Manage ranges" onClick={() => openManageRanges(p)}>
                             <Icon name="edit" size={15} />
@@ -334,7 +366,7 @@ It will no longer appear on result entry. Reports already released keep their va
                       </td>
                     </tr>
                   ))}
-                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={7}>No parameters yet for this test.</td></tr>}
+                  {(selectedTest.ParameterMasters || []).length === 0 && <tr><td colSpan={8}>No parameters yet for this test.</td></tr>}
                 </tbody>
               </table>
             </>

@@ -110,6 +110,8 @@ async function start() {
     'ALTER TABLE report ADD COLUMN IF NOT EXISTS "verifiedBy" VARCHAR(255)',
     'ALTER TABLE report ADD COLUMN IF NOT EXISTS "releasedBy" VARCHAR(255)',
     'ALTER TABLE report ADD COLUMN IF NOT EXISTS "revokedBy" VARCHAR(255)',
+    'ALTER TABLE test_master ADD COLUMN IF NOT EXISTS "testType" VARCHAR(255) NOT NULL DEFAULT \'REGULAR\'',
+    'ALTER TABLE client_test_price ADD COLUMN IF NOT EXISTS "overrideChiefInactive" BOOLEAN NOT NULL DEFAULT false',
   ].join(';\n'));
   await sequelize.query("ALTER TYPE enum_report_status ADD VALUE IF NOT EXISTS 'REVOKED'");
   await backfillSystemUsers();

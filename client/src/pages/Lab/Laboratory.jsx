@@ -4,6 +4,19 @@ import api from '../../api/client';
 import { Icon } from '../../components/Icons';
 import ReviewResults from './ReviewResults';
 import { StatusLegend, StatusPill, TestStatusSummary, TestStatusList } from '../../components/TestStatus';
+import { TEST_TYPE_LABEL, conflictsWith } from '../../utils/testType';
+
+const testTypeOf = (s) => s.BillItem?.TestMaster?.testType || 'REGULAR';
+
+// Default ticks for the Collect picker: every Regular test plus Fasting if the
+// order has any (it's normally drawn first), otherwise Post Lunch - never both.
+function defaultCollectSelection(pending, onlyId) {
+  if (onlyId) return new Set([onlyId]);
+  const hasFasting = pending.some((s) => testTypeOf(s) === 'FASTING');
+  return new Set(pending
+    .filter((s) => testTypeOf(s) === 'REGULAR' || testTypeOf(s) === (hasFasting ? 'FASTING' : 'POST_LUNCH'))
+    .map((s) => s.id));
+}
 
 function daysAgoISO(days) {
   const d = new Date();
@@ -106,10 +119,13 @@ export default function Laboratory() {
   const [notice, setNotice] = useState(''); // e.g. which tests a Review Results save couldn't verify
   const [busy, setBusy] = useState(false);
   const [confirmRelease, setConfirmRelease] = useState(null); // samples[] pending a release confirmation, or null
-  const [revokeFor, setRevokeFor] = useState(null); // sample being revoked, or null
+  const [revokeFor, setRevokeFor] = useState(null); // { billId, patient, candidates: samples[] } open in the Revoke dialog, or null
+  const [revokeIds, setRevokeIds] = useState(() => new Set());
   const [revokeReason, setRevokeReason] = useState('');
   const [revokeError, setRevokeError] = useState('');
   const [revokeSaving, setRevokeSaving] = useState(false);
+  const [collectFor, setCollectFor] = useState(null); // { billId, patient, pending: samples[] } open in the Collect picker
+  const [collectIds, setCollectIds] = useState(() => new Set());
 
   // Always loaded unfiltered - the status tabs below filter client-side so the
   // counts strip (Total/Pending/Done/Cancelled) can keep reflecting every
@@ -208,11 +224,36 @@ export default function Laboratory() {
     setReviewFocusId(focusSampleId);
   }
 
+  // Opens the Collect picker over every still-pending test on the order (not
+  // just the visible ones), so staff choose which samples are drawn now.
+  function openCollect(billId, onlySampleId = null) {
+    const group = billGroupsById.get(billId);
+    if (!group) return;
+    const pending = group.samples.filter((s) => s.status === 'PENDING_COLLECTION');
+    setError('');
+    setCollectFor({ billId, patient: group.patient, pending });
+    setCollectIds(defaultCollectSelection(pending, onlySampleId));
+  }
+
+  function toggleCollect(sample) {
+    setCollectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sample.id)) next.delete(sample.id); else next.add(sample.id);
+      return next;
+    });
+  }
+
+  function handleCollect() {
+    const { billId } = collectFor;
+    const sampleIds = [...collectIds];
+    setCollectFor(null);
+    runAction(() => api.post(`/lab/bills/${billId}/collect`, { sampleIds }));
+  }
+
   function runCardAction(group) {
     const kind = cardActionFor(group);
     if (kind === 'collect') {
-      const toCollect = group.samples.filter((s) => s.status === 'PENDING_COLLECTION');
-      runAction(() => Promise.all(toCollect.map((s) => doAction(s, 'collect'))));
+      openCollect(group.billId);
     } else if (kind === 'release') {
       // Only the still-VERIFIED tests need releasing - an already-RELEASED one
       // in the same bucket (Report Release covers both) would 400 if re-sent.
@@ -231,10 +272,25 @@ export default function Laboratory() {
     runAction(() => Promise.all(toRelease.map((s) => doAction(s, 'release'))));
   }
 
-  function openRevoke(sample) {
-    setRevokeFor(sample);
+  // Lists every test on the order still revocable (released, within the
+  // server's revoke window) as tick boxes; onlySampleId pre-ticks just that one.
+  function openRevoke(billId, onlySampleId = null) {
+    const group = billGroupsById.get(billId);
+    if (!group) return;
+    const candidates = group.samples.filter((s) => s.canRevoke);
+    if (candidates.length === 0) return;
+    setRevokeFor({ billId, patient: group.patient, candidates });
+    setRevokeIds(new Set(onlySampleId ? [onlySampleId] : candidates.length === 1 ? [candidates[0].id] : []));
     setRevokeReason('');
     setRevokeError('');
+  }
+
+  function toggleRevoke(sampleId) {
+    setRevokeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sampleId)) next.delete(sampleId); else next.add(sampleId);
+      return next;
+    });
   }
 
   async function handleRevoke(e) {
@@ -243,7 +299,7 @@ export default function Laboratory() {
     setRevokeError('');
     setRevokeSaving(true);
     try {
-      await api.put(`/lab/samples/${revokeFor.id}/revoke`, { reason: revokeReason });
+      await api.put(`/lab/bills/${revokeFor.billId}/revoke`, { sampleIds: [...revokeIds], reason: revokeReason });
       setRevokeFor(null);
       await load();
     } catch (err) {
@@ -336,7 +392,7 @@ export default function Laboratory() {
                     </td>
                     <td>
                       <div className="row-actions">
-                        {s.status === 'PENDING_COLLECTION' && <button onClick={() => runAction(() => doAction(s, 'collect'))} disabled={busy}>Collect</button>}
+                        {s.status === 'PENDING_COLLECTION' && bill && <button onClick={() => openCollect(bill.id, s.id)} disabled={busy}>Collect</button>}
                         {RESULT_ENTRY_STATUSES.includes(s.status) && (
                           <button onClick={() => openReview(group, s.id)} disabled={busy}>
                             {s.status === 'RESULT_ENTERED' ? 'Verify' : s.status === 'VERIFIED' ? 'Edit' : 'Results'}
@@ -350,7 +406,7 @@ export default function Laboratory() {
                         {s.status === 'RELEASED' && bill && (
                           <>
                             <button className="secondary" onClick={() => navigate(`/app/report/${bill.id}`)}>Report</button>
-                            <button className="danger" onClick={() => openRevoke(s)} disabled={busy}>Revoke</button>
+                            {s.canRevoke && <button className="danger" onClick={() => openRevoke(bill.id, s.id)} disabled={busy}>Revoke</button>}
                           </>
                         )}
                       </div>
@@ -377,7 +433,7 @@ export default function Laboratory() {
             // VERIFIED-but-not-yet-released, and revoking an already-RELEASED
             // one. Both need their own entry point here regardless of actionKind.
             const hasVerified = g.samples.some((s) => s.status === 'VERIFIED');
-            const releasedSample = g.samples.find((s) => s.status === 'RELEASED');
+            const canRevokeAny = g.samples.some((s) => s.canRevoke); // released within the revoke window
             // Verified tests (including a revoked report rolled back to VERIFIED)
             // must stay releasable even while other tests on the same order are
             // still being collected/entered - otherwise the CTA, which follows
@@ -430,8 +486,8 @@ export default function Laboratory() {
                       Release{verifiedSamples.length > 1 ? ` (${verifiedSamples.length})` : ''}
                     </button>
                   )}
-                  {releasedSample && (
-                    <button type="button" className="secondary danger" disabled={busy} onClick={() => openRevoke(releasedSample)}>Revoke</button>
+                  {canRevokeAny && (
+                    <button type="button" className="secondary danger" disabled={busy} onClick={() => openRevoke(g.billId)}>Revoke</button>
                   )}
                   <button type="button" className="cta-btn" disabled={busy} onClick={() => runCardAction(g)}>
                     {CARD_ACTION_LABEL[actionKind]}
@@ -464,22 +520,72 @@ export default function Laboratory() {
         </div>
       )}
 
+      {collectFor && (() => {
+        const selectedTypes = collectFor.pending.filter((s) => collectIds.has(s.id)).map(testTypeOf);
+        return (
+          <div className="modal-overlay" onClick={() => setCollectFor(null)}>
+            <div className="modal-card" style={{ textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
+              <h2>Collect Samples</h2>
+              <p style={{ fontSize: 13, color: '#64748b', marginTop: 0 }}>
+                {collectFor.patient?.name} — tick the tests whose sample is being collected now. Fasting and Post Lunch
+                samples are collected separately: collect one now and the other later.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 16px' }}>
+                {collectFor.pending.map((s) => {
+                  const type = testTypeOf(s);
+                  const blocked = !collectIds.has(s.id) && selectedTypes.some((t) => conflictsWith(t, type));
+                  return (
+                    <label
+                      key={s.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0, fontWeight: 'normal', opacity: blocked ? 0.5 : 1 }}
+                      title={blocked ? 'Can\'t be collected together with the other timed sample - collect it separately' : ''}
+                    >
+                      <input type="checkbox" style={{ width: 'auto' }} checked={collectIds.has(s.id)} disabled={blocked} onChange={() => toggleCollect(s)} />
+                      <span style={{ flex: 1 }}>{s.BillItem?.TestMaster?.testName}</span>
+                      {type !== 'REGULAR' && <span className="badge-outline">{TEST_TYPE_LABEL[type]}</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" className="secondary" onClick={() => setCollectFor(null)}>Cancel</button>
+                <button type="button" onClick={handleCollect} disabled={busy || collectIds.size === 0}>
+                  Collect {collectIds.size} test{collectIds.size === 1 ? '' : 's'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {revokeFor && (
         <div className="modal-overlay" onClick={() => setRevokeFor(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <h2>Revoke Released Report</h2>
             <p style={{ fontSize: 13, color: '#64748b' }}>
-              {revokeFor.BillItem?.TestMaster?.testName} will no longer be visible on the patient's report until it's
-              corrected and released again. This is kept as a record, not deleted.
+              {revokeFor.patient?.name} — tick the tests to revoke. They'll no longer be visible on the patient's
+              report until corrected and released again. This is kept as a record, not deleted. A test can only be
+              revoked within 5 days of its release.
             </p>
             <form onSubmit={handleRevoke}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 12px' }}>
+                {revokeFor.candidates.map((s) => (
+                  <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0, fontWeight: 'normal' }}>
+                    <input type="checkbox" style={{ width: 'auto' }} checked={revokeIds.has(s.id)} onChange={() => toggleRevoke(s.id)} />
+                    <span style={{ flex: 1 }}>{s.BillItem?.TestMaster?.testName}</span>
+                    <span className="cell-sub">Released {formatDateTime(s.Report?.releasedAt)}</span>
+                  </label>
+                ))}
+              </div>
               <label><span>Reason (required)</span>
                 <input value={revokeReason} onChange={(e) => setRevokeReason(e.target.value)} required autoFocus />
               </label>
               {revokeError && <p className="error-text">{revokeError}</p>}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button type="button" className="secondary" onClick={() => setRevokeFor(null)} disabled={revokeSaving}>Cancel</button>
-                <button type="submit" className="danger" disabled={revokeSaving}>{revokeSaving ? 'Revoking…' : 'Revoke Report'}</button>
+                <button type="submit" className="danger" disabled={revokeSaving || revokeIds.size === 0}>
+                  {revokeSaving ? 'Revoking…' : `Revoke ${revokeIds.size} test${revokeIds.size === 1 ? '' : 's'}`}
+                </button>
               </div>
             </form>
           </div>

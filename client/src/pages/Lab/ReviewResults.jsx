@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import { RemarksContent, parseRemarksTable } from '../../components/Remarks';
+import Sparkline from '../../components/Sparkline';
 
 // 'H' above the normal range, 'L' below it, null when in range or not numeric.
 function rangeFlag(value, low, high) {
@@ -369,6 +370,17 @@ export default function ReviewResults({ group, focusSampleId, onClose, onSaved }
                                 <>
                                   <span className={prev.isAbnormal ? 'prev-abnormal' : ''}>{prev.value}</span>
                                   <span className="rt-date" title={prev.billNo}>{formatShortDate(prev.date)}</span>
+                                  {/* Every earlier visit, oldest first - shown for every parameter
+                                      (the report's Trend tick box only affects the printed report). */}
+                                  {prev.history?.length > 1 && (
+                                    <span
+                                      className="rt-trend"
+                                      title={prev.history.map((h) => `${formatShortDate(h.date)}: ${h.value}${h.billNo ? ` (${h.billNo})` : ''}`).join('\n')}
+                                    >
+                                      <Sparkline points={prev.history} width={64} height={18} />
+                                      <small>{prev.history.length} visits</small>
+                                    </span>
+                                  )}
                                 </>
                               ) : <span className="rt-none">—</span>}
                             </td>

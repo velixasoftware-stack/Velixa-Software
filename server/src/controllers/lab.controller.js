@@ -1,13 +1,14 @@
 const { Op } = require('sequelize');
 const {
-  Sample, BillItem, TestMaster, ParameterMaster, ParameterNormalRange, Result, Report, Bill, Patient, Client,
-  ReferralDoctor, Payor, ClientUser,
+  sequelize, Sample, BillItem, TestMaster, ParameterMaster, ParameterNormalRange, Result, Report, Bill, Patient, Client,
+  ReferralDoctor, Payor, ClientUser, ClientParameterTrend,
 } = require('../models');
 const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 const { getCurrentActor } = require('../utils/auditContext');
+const { fastingPostLunchConflict } = require('../utils/testType');
 
 // A client doing result entry sees every universal parameter plus whatever
 // parameters it added for itself for that test - never another client's own.
@@ -100,6 +101,9 @@ async function listSamples(req, res) {
 
   const samples = await Sample.findAll({ where, include: buildSampleIncludes(clientId), order: [['createdAt', 'DESC']] });
   const withRanges = await Promise.all(samples.map((s) => withResolvedRanges(s.toJSON())));
+  // canRevoke: released and still inside the revoke window - the lab screen
+  // offers Revoke only for these (the server re-checks on revoke anyway).
+  for (const s of withRanges) s.canRevoke = !revokeBlockReason(s);
   return res.json(withRanges);
 }
 
@@ -122,6 +126,34 @@ async function collectSample(req, res) {
 
   await sample.update({ status: 'COLLECTED', collectedAt: new Date(), collectedBy: getCurrentActor() });
   return res.json(sample);
+}
+
+// POST /api/lab/bills/:billId/collect  { sampleIds: [] }
+// Collects the chosen tests of one order together. Fasting and Post Lunch
+// samples are drawn at different times, so one call may include either
+// (plus any Regular tests) but never both - the other is collected later.
+async function collectSamples(req, res) {
+  const { clientId } = req.user;
+  const ids = [...new Set((req.body.sampleIds || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) return res.status(400).json({ message: 'Select at least one test to collect' });
+
+  const samples = await Sample.findAll({
+    where: { id: ids, clientId },
+    include: [{ model: BillItem, where: { billId: req.params.billId }, include: [TestMaster] }],
+  });
+  if (samples.length !== ids.length) return res.status(404).json({ message: 'Some selected tests were not found on this order' });
+  const notPending = samples.filter((s) => s.status !== 'PENDING_COLLECTION');
+  if (notPending.length) {
+    return res.status(400).json({ message: `Already ${notPending[0].status}: ${notPending.map((s) => s.BillItem.TestMaster?.testName).join(', ')}` });
+  }
+  const conflict = fastingPostLunchConflict(samples.map((s) => s.BillItem.TestMaster));
+  if (conflict) return res.status(400).json({ message: conflict });
+
+  await Sample.update(
+    { status: 'COLLECTED', collectedAt: new Date(), collectedBy: getCurrentActor() },
+    { where: { id: ids, clientId, status: 'PENDING_COLLECTION' } },
+  );
+  return res.json({ collected: ids.length });
 }
 
 // Parameters are optional at result entry - one left blank has no value to
@@ -236,13 +268,55 @@ async function revokeReport(req, res) {
 
   const sample = await Sample.findOne({ where: { id: req.params.id, clientId }, include: [Report] });
   if (!sample) return res.status(404).json({ message: 'Sample not found' });
-  if (sample.status !== 'RELEASED') {
-    return res.status(400).json({ message: 'Only a released report can be revoked' });
-  }
+  const blocked = revokeBlockReason(sample);
+  if (blocked) return res.status(400).json({ message: blocked });
 
   await sample.update({ status: 'VERIFIED' });
   await sample.Report.update({ status: 'REVOKED', revokedAt: new Date(), revokedReason: reason.trim(), revokedBy: getCurrentActor() });
   return res.json({ message: 'Report revoked' });
+}
+
+// A released report can be revoked for this many days after its release -
+// after that the result is final and Revoke is no longer offered.
+const REVOKE_WINDOW_DAYS = 5;
+
+function revokeBlockReason(sample, testName = 'This test') {
+  if (sample.status !== 'RELEASED') return `${testName}: only a released report can be revoked`;
+  const releasedAt = sample.Report?.releasedAt;
+  if (releasedAt && Date.now() - new Date(releasedAt).getTime() > REVOKE_WINDOW_DAYS * 24 * 60 * 60 * 1000) {
+    return `${testName}: can only be revoked within ${REVOKE_WINDOW_DAYS} days of release`;
+  }
+  return null;
+}
+
+// PUT /api/lab/bills/:billId/revoke  { sampleIds: [], reason }
+// Revokes the chosen released tests of one order together, with one reason.
+// All-or-nothing: if any chosen test can't be revoked, none are.
+async function revokeReports(req, res) {
+  const { clientId } = req.user;
+  const reason = req.body.reason?.trim();
+  if (!reason) return res.status(400).json({ message: 'A reason is required to revoke a released report' });
+  const ids = [...new Set((req.body.sampleIds || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) return res.status(400).json({ message: 'Select at least one test to revoke' });
+
+  const samples = await Sample.findAll({
+    where: { id: ids, clientId },
+    include: [Report, { model: BillItem, where: { billId: req.params.billId }, include: [TestMaster] }],
+  });
+  if (samples.length !== ids.length) return res.status(404).json({ message: 'Some selected tests were not found on this order' });
+  for (const s of samples) {
+    const blocked = revokeBlockReason(s, s.BillItem.TestMaster?.testName);
+    if (blocked) return res.status(400).json({ message: blocked });
+  }
+
+  const actor = getCurrentActor();
+  await sequelize.transaction(async (transaction) => {
+    for (const s of samples) {
+      await s.update({ status: 'VERIFIED' }, { transaction });
+      await s.Report.update({ status: 'REVOKED', revokedAt: new Date(), revokedReason: reason, revokedBy: actor }, { transaction });
+    }
+  });
+  return res.json({ revoked: samples.length });
 }
 
 // GET /api/lab/bills/:billId/report
@@ -272,22 +346,53 @@ async function getBillReport(req, res) {
   const ageUnit = bill.Patient?.ageUnit;
   await attachNormalRanges(releasedSamples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)));
 
-  // One signature printed per report, even though a bill can have several
-  // released tests - whoever released the most recent one represents it.
-  // Only a user who has actually set up a signature (via Report Branding)
-  // shows one; otherwise the report footer prints with no signature, same as
-  // before this feature existed.
-  const latestReleased = [...releasedSamples].sort((a, b) => new Date(b.Report.releasedAt) - new Date(a.Report.releasedAt))[0];
-  const releasedByUser = latestReleased?.Report?.ReleasedByUser;
-  const doctor = releasedByUser?.signaturePath
-    ? {
-        name: releasedByUser.signatureName || releasedByUser.name || releasedByUser.username,
-        designation: releasedByUser.designation,
-        signatureUrl: releasedByUser.signaturePath,
-      }
-    : null;
+  // A signature for a set of released tests: whoever released the most recent
+  // of them represents it. Only a user who has actually set up a signature
+  // (via Report Branding) shows one; otherwise none is printed.
+  const signatureFor = (list) => {
+    const latest = [...list].sort((a, b) => new Date(b.Report.releasedAt) - new Date(a.Report.releasedAt))[0];
+    const user = latest?.Report?.ReleasedByUser;
+    return user?.signaturePath
+      ? { name: user.signatureName || user.name || user.username, designation: user.designation, signatureUrl: user.signaturePath }
+      : null;
+  };
+  const doctor = signatureFor(releasedSamples);
+
+  const testJson = (s) => ({
+    testName: s.BillItem.TestMaster.testName,
+    testCode: s.BillItem.TestMaster.testCode,
+    interpretation: s.BillItem.TestMaster.interpretation,
+    barcode: s.barcode,
+    collectedAt: s.collectedAt,
+    releasedAt: s.Report.releasedAt,
+    remarks: s.remarks || null,
+    remarksBig: s.remarksBig,
+    parameters: sortResultsByParameter(s.Results.filter(hasValue)).map((r) => {
+      const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
+      return {
+        parameterCode: r.ParameterMaster.parameterCode,
+        parameterName: r.ParameterMaster.parameterName,
+        value: r.value,
+        unit: r.ParameterMaster.unit,
+        normalRangeLow: range.normalRangeLow,
+        normalRangeHigh: range.normalRangeHigh,
+        isAbnormal: r.isAbnormal,
+        isInterpretation: r.ParameterMaster.isInterpretation,
+      };
+    }),
+  });
+
+  // The report is printed group by group (each group on its own page(s), its
+  // name above its tests, its own signature after them) - see
+  // groupReportSamples for the order.
+  const groups = groupReportSamples(releasedSamples).map((g) => ({
+    name: g.name,
+    tests: g.samples.map(testJson),
+    doctor: signatureFor(g.samples),
+  }));
 
   return res.json({
+    groups,
     doctor,
     bill: {
       id: bill.id, billNo: bill.billNo, createdAt: bill.createdAt, walkInDate: bill.walkInDate,
@@ -306,30 +411,33 @@ async function getBillReport(req, res) {
       logoUrl: bill.Client.reportLogoPath,
       letterheadUrl: bill.Client.reportLetterheadPath,
     },
-    tests: releasedSamples.map((s) => ({
-      testName: s.BillItem.TestMaster.testName,
-      testCode: s.BillItem.TestMaster.testCode,
-      interpretation: s.BillItem.TestMaster.interpretation,
-      barcode: s.barcode,
-      collectedAt: s.collectedAt,
-      releasedAt: s.Report.releasedAt,
-      remarks: s.remarks || null,
-      remarksBig: s.remarksBig,
-      parameters: sortResultsByParameter(s.Results.filter(hasValue)).map((r) => {
-        const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
-        return {
-          parameterCode: r.ParameterMaster.parameterCode,
-          parameterName: r.ParameterMaster.parameterName,
-          value: r.value,
-          unit: r.ParameterMaster.unit,
-          normalRangeLow: range.normalRangeLow,
-          normalRangeHigh: range.normalRangeHigh,
-          isAbnormal: r.isAbnormal,
-          isInterpretation: r.ParameterMaster.isInterpretation,
-        };
-      }),
-    })),
+    // Same tests, flat in group order - kept for anything reading the old shape.
+    tests: groups.flatMap((g) => g.tests),
   });
+}
+
+// Report group order: Haematology first, Biochemistry next, then any other
+// service group alphabetically, and tests with no group last. Group names are
+// free-ish text (e.g. "Hae", "Hematology", "BIO", "Clinical Biochemistry"),
+// so the first two are recognised by spelling rather than exact name.
+function groupRank(name) {
+  if (!name) return 3;
+  // "bio" first: "Biochemistry" itself contains "hem".
+  if (/bio/i.test(name)) return 1;
+  if (/haem|hemat|^hae|^hem/i.test(name)) return 0;
+  return 2;
+}
+
+// Groups samples by their test's service group (case-insensitive), in report order.
+function groupReportSamples(samples) {
+  const byKey = new Map();
+  for (const s of samples) {
+    const name = s.BillItem.TestMaster.category?.trim() || '';
+    const key = name.toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, { name: name || 'Other Tests', rank: groupRank(name), samples: [] });
+    byKey.get(key).samples.push(s);
+  }
+  return [...byKey.values()].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 }
 
 // POST /api/report-view/bills/:billId/report/share  Body: { channel: 'whatsapp' | 'email', to? }
@@ -396,27 +504,73 @@ async function shareReport(req, res) {
 }
 
 /** Every past RELEASED value this patient has for one parameter, oldest first. */
-async function getPatientParameterHistory(clientId, patientId, parameterId) {
+// The same test parameter often exists as several ParameterMaster rows over
+// time (e.g. "Hemoglobin" re-created, or an old row switched off and a new one
+// made) - a patient's earlier values sit under whichever row was live then.
+// For each given parameter, returns every row this client can see with the
+// same name and unit (inactive ones too), so history spans all of them.
+// Units only have to match when both rows have one.
+async function equivalentParameterIds(clientId, params) {
+  const nameKey = (p) => p.parameterName.trim().toLowerCase();
+  const unitKey = (p) => (p.unit || '').replace(/\s+/g, '').toLowerCase();
+  const names = [...new Set(params.map(nameKey))];
+  if (names.length === 0) return new Map();
+  const candidates = await ParameterMaster.findAll({
+    where: {
+      [Op.and]: [
+        sequelize.where(sequelize.fn('lower', sequelize.fn('trim', sequelize.col('parameterName'))), { [Op.in]: names }),
+        { [Op.or]: [{ clientId: null }, { clientId }] },
+      ],
+    },
+    attributes: ['id', 'parameterName', 'unit', 'isInterpretation'],
+  });
+  return new Map(params.map((p) => [p.id, [...new Set([p.id, ...candidates
+    .filter((c) => nameKey(c) === nameKey(p) && !!c.isInterpretation === !!p.isInterpretation
+      && (!unitKey(c) || !unitKey(p) || unitKey(c) === unitKey(p)))
+    .map((c) => c.id)])]]));
+}
+
+// parameterIds: the parameter plus its equivalents (equivalentParameterIds).
+// Only orders made up to `asOf` (the bill being viewed), so an older report never shows values from later visits.
+async function getPatientParameterHistory(clientId, patientId, parameterIds, asOf) {
   const results = await Result.findAll({
-    where: { parameterId },
+    where: { parameterId: parameterIds },
     include: [
       {
         model: Sample,
         required: true,
         where: { clientId, status: 'RELEASED' },
         include: [
-          { model: BillItem, required: true, include: [{ model: Bill, required: true, where: { patientId } }] },
+          { model: BillItem, required: true, include: [{ model: Bill, required: true, where: { patientId, createdAt: { [Op.lte]: asOf } } }] },
           { model: Report, required: true },
         ],
       },
     ],
   });
 
-  return results
-    .filter(hasValue)
-    .map((r) => ({ date: r.Sample.Report.releasedAt, value: r.value, isAbnormal: r.isAbnormal }))
-    .filter((r) => r.date)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  return onePerVisit(results.filter(hasValue).filter((r) => r.Sample.Report.releasedAt));
+}
+
+// How many visits the report's AI Trend section shows per parameter.
+const TREND_VISITS = 3;
+
+// One point per visit (order): the same parameter can hold a value under two
+// equivalent rows on one order (e.g. an old and a new "Hemoglobin" both on
+// that day's CBC) - counting both would double that visit in the trend.
+// Ordered by visit (the order's date), not release time - an older order
+// released or re-released later must still sit at its own place.
+// Where one visit has two, the newest parameter row's value is used.
+function onePerVisit(results) {
+  const byBill = new Map();
+  for (const r of [...results].sort((a, b) => b.parameterId - a.parameterId)) {
+    const bill = r.Sample.BillItem.Bill;
+    if (!byBill.has(bill.id)) {
+      byBill.set(bill.id, {
+        date: r.Sample.Report.releasedAt, visitedAt: bill.createdAt, value: r.value, isAbnormal: r.isAbnormal, billNo: bill.billNo,
+      });
+    }
+  }
+  return [...byBill.values()].sort((a, b) => new Date(a.visitedAt) - new Date(b.visitedAt));
 }
 
 const PENDING_STATUS_LABEL = {
@@ -517,35 +671,58 @@ async function getPreviousResults(req, res) {
   const bill = await Bill.findOne({ where: { id: req.params.billId, clientId } });
   if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
+  // The bill's parameters: each test's own plus those *assigned* to it from
+  // another test (e.g. a shared Hemoglobin) - same set result entry shows.
   const items = await BillItem.findAll({
     where: { billId: bill.id },
-    include: [{ model: TestMaster, include: [ParameterMaster] }],
+    include: [{
+      model: TestMaster,
+      include: [
+        { model: ParameterMaster, required: false },
+        { model: ParameterMaster, as: 'AssignedParameters', required: false, through: { attributes: [] } },
+      ],
+    }],
   });
-  const parameterIds = [...new Set(items.flatMap((i) => (i.TestMaster?.ParameterMasters || []).filter((p) => p.active !== false)
-    .filter((p) => !p.isInterpretation).map((p) => p.id)))];
-  if (parameterIds.length === 0) return res.json({});
+  const params = new Map();
+  for (const p of items.flatMap((i) => [...(i.TestMaster?.ParameterMasters || []), ...(i.TestMaster?.AssignedParameters || [])])) {
+    if (p.active !== false && !p.isInterpretation) params.set(p.id, p);
+  }
+  if (params.size === 0) return res.json({});
+
+  // A previous value may sit under an older row of the same parameter -
+  // map each such row back to the bill's own parameter id(s).
+  const equivalents = await equivalentParameterIds(clientId, [...params.values()]);
+  const targetsById = new Map();
+  for (const [paramId, ids] of equivalents) {
+    for (const id of ids) targetsById.set(id, [...(targetsById.get(id) || []), paramId]);
+  }
 
   const results = await Result.findAll({
-    where: { parameterId: parameterIds },
+    where: { parameterId: [...targetsById.keys()] },
     include: [{
       model: Sample,
       required: true,
       where: { clientId, status: 'RELEASED' },
       include: [
-        { model: BillItem, required: true, include: [{ model: Bill, required: true, where: { patientId: bill.patientId, id: { [Op.ne]: bill.id } } }] },
+        { model: BillItem, required: true, include: [{ model: Bill, required: true, where: { patientId: bill.patientId, id: { [Op.ne]: bill.id }, createdAt: { [Op.lt]: bill.createdAt } } }] },
         { model: Report, required: true },
       ],
     }],
   });
 
-  const latest = {};
+  // Every earlier visit per parameter, oldest first - shown at result entry
+  // for all parameters (the report's Trend tick box doesn't apply here).
+  const resultsById = {};
   for (const r of results) {
-    const date = r.Sample.Report.releasedAt;
-    if (!date || !hasValue(r)) continue;
-    const prev = latest[r.parameterId];
-    if (!prev || new Date(date) > new Date(prev.date)) {
-      latest[r.parameterId] = { value: r.value, date, isAbnormal: r.isAbnormal, billNo: r.Sample.BillItem.Bill.billNo };
-    }
+    if (!r.Sample.Report.releasedAt || !hasValue(r)) continue;
+    for (const paramId of targetsById.get(r.parameterId) || []) (resultsById[paramId] ||= []).push(r);
+  }
+
+  // Latest *visit* wins, not latest release - see onePerVisit.
+  const latest = {};
+  for (const [paramId, paramResults] of Object.entries(resultsById)) {
+    const history = onePerVisit(paramResults);
+    latest[paramId] = { ...history[history.length - 1], history };
   }
   return res.json(latest);
 }
@@ -571,15 +748,39 @@ async function getBillTrendReport(req, res) {
   }
   await attachNormalRanges(samples.flatMap((s) => s.Results.map((r) => r.ParameterMaster)));
 
+  // Only parameters this client ticked "Trend" for (Test Parameters screen) -
+  // set per parameter, so it applies on every test the parameter is mapped to.
+  const trended = new Set((await ClientParameterTrend.findAll({ where: { clientId }, attributes: ['parameterId'] }))
+    .map((r) => r.parameterId));
+  // A tick follows the parameter, not one exact row: an older order may hold
+  // its value under an earlier row of the same parameter (same name + unit),
+  // so a parameter counts as ticked when any of its equivalent rows is.
+  const equivalents = await equivalentParameterIds(clientId, samples
+    .flatMap((s) => s.Results.map((r) => r.ParameterMaster))
+    .filter((p) => !p.isInterpretation));
+  const isTrended = (paramId) => (equivalents.get(paramId) || [paramId]).some((id) => trended.has(id));
+
   const parameters = [];
+  const trendedKeys = new Set(); // one row per parameter, even if this order holds it under two equivalent rows
   for (const sample of samples) {
     for (const result of sortResultsByParameter([...sample.Results])) {
       const param = result.ParameterMaster;
+      if (!isTrended(param.id)) continue;
       if (param.isInterpretation) continue; // a trend/sparkline over free text is meaningless
       if (!hasValue(result)) continue; // left blank at entry - nothing to trend
-      const history = await getPatientParameterHistory(clientId, bill.patientId, param.id);
+      const key = `${sample.BillItem.testId}:${Math.min(...(equivalents.get(param.id) || [param.id]))}`;
+      if (trendedKeys.has(key)) continue;
+      trendedKeys.add(key);
+      const fullHistory = await getPatientParameterHistory(clientId, bill.patientId, equivalents.get(param.id) || [param.id], bill.createdAt);
+      // This visit's point is the value printed on this report (another
+      // equivalent row on the same order may hold a different one).
+      const current = fullHistory.find((h) => h.billNo === bill.billNo);
+      if (current) Object.assign(current, { value: result.value, isAbnormal: result.isAbnormal });
+      // The report shows the last TREND_VISITS visits, this one included.
+      const history = fullHistory.slice(-TREND_VISITS);
       const range = resolveNormalRange(param, bill.Patient?.age, bill.Patient?.gender, bill.Patient?.ageUnit);
       parameters.push({
+        barcode: sample.barcode, // ties the row to its test on the report (printed right under that test)
         testName: sample.BillItem.TestMaster.testName,
         parameterCode: param.parameterCode,
         parameterName: param.parameterName,
@@ -599,6 +800,6 @@ async function getBillTrendReport(req, res) {
 }
 
 module.exports = {
-  listSamples, getSample, collectSample, enterResults, verifySample, releaseSample, revokeReport, getBillReport, getBillTrendReport, shareReport,
+  listSamples, getSample, collectSample, collectSamples, enterResults, verifySample, releaseSample, revokeReport, revokeReports, getBillReport, getBillTrendReport, shareReport,
   getPreviousResults, getPendingTests,
 };

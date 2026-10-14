@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
+import StatusSwitch from '../../components/StatusSwitch';
 import { downloadFile } from '../../utils/download';
+import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 
 const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
 const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '' });
-const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', interpretation: '' });
+const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', testType: '', interpretation: '' });
 const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false });
 // Narrower than the app-wide .form-grid default (minmax 200px) so Gender/Age/Unit/Range fields
 // wrap two-three to a row instead of stacking one-per-row on a narrow/mobile screen.
@@ -186,7 +188,7 @@ export default function Masters() {
     setEditingTestId(test.id);
     setTestForm({
       testCode: test.testCode, testName: test.testName,
-      category: test.category || '', sampleType: test.sampleType || '', interpretation: test.interpretation || '',
+      category: test.category || '', sampleType: test.sampleType || '', testType: test.testType || 'REGULAR', interpretation: test.interpretation || '',
     });
     setShowTestModal(true);
   }
@@ -443,7 +445,7 @@ This cannot be undone.`)) return;
                   {t.testName}
                   {t.active === false && <span className="badge EXPIRED" style={{ marginLeft: 6 }}>Inactive</span>}
                 </strong>
-                <span className="meta">{t.category || 'Uncategorized'} · {(t.ParameterMasters || []).length} param(s)</span>
+                <span className="meta"><span className="test-code">{t.testCode}</span> · {t.category || 'Uncategorized'} · {(t.ParameterMasters || []).length} param(s)</span>
               </button>
             ))}
             {filteredTests.length === 0 && <p style={{ fontSize: 13, color: '#94a3b8' }}>No tests found.</p>}
@@ -463,7 +465,7 @@ This cannot be undone.`)) return;
                     </span>
                   </h2>
                   <p className="meta">
-                    {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} ·{' '}
+                    <span className="test-code">{selectedTest.testCode}</span> · {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} · {TEST_TYPE_LABEL[selectedTest.testType] || 'Regular'} ·{' '}
                     {(selectedTest.ParameterMasters || []).length} parameter(s) configured
                   </p>
                 </div>
@@ -471,9 +473,7 @@ This cannot be undone.`)) return;
                   <button type="button" className="secondary icon-btn" title="Edit test details" onClick={() => openEditTest(selectedTest)}>
                     <Icon name="edit" size={15} />
                   </button>
-                  <button type="button" className="secondary" onClick={() => toggleTestActive(selectedTest)}>
-                    {selectedTest.active === false ? 'Make Active' : 'Make Inactive'}
-                  </button>
+                  <StatusSwitch active={selectedTest.active !== false} onChange={() => toggleTestActive(selectedTest)} />
                   <button type="button" className="danger" title="Delete this test and all its master data" onClick={() => deleteTest(selectedTest)}>
                     Delete Test
                   </button>
@@ -551,6 +551,12 @@ This cannot be undone.`)) return;
               </label>
               <label><span>Sample Type</span>
                 <input value={testForm.sampleType} onChange={(e) => setTestForm((f) => ({ ...f, sampleType: e.target.value }))} placeholder="e.g. Blood" />
+              </label>
+              <label><span>Test Type</span>
+                <select value={testForm.testType} onChange={(e) => setTestForm((f) => ({ ...f, testType: e.target.value }))} required>
+                  <option value="">— Select —</option>
+                  {TEST_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </label>
               <label><span>Interpretation (optional — same note on every report for this test)</span>
                 <textarea

@@ -246,6 +246,10 @@ const TestMaster = sequelize.define('TestMaster', {
   // "Uncategorized". Sample type (e.g. "Blood", "Urine") is informational.
   category: { type: DataTypes.STRING },
   sampleType: { type: DataTypes.STRING },
+  // REGULAR | FASTING | POST_LUNCH - drives sample collection: a Fasting and a
+  // Post Lunch sample on the same order are drawn at different times, so they
+  // can never be collected in the same action (see utils/testType.js).
+  testType: { type: DataTypes.STRING, allowNull: false, defaultValue: 'REGULAR' },
   // A fixed note about this test, the same on every report regardless of
   // patient or entered values (e.g. "Elevated in bacterial infection,
   // reduced in viral") - set once here at Test Master, not per-result.
@@ -311,6 +315,17 @@ const ClientTestShortName = sequelize.define('ClientTestShortName', {
   indexes: [{ unique: true, fields: ['clientId', 'testId'] }],
 });
 
+// One row per parameter a client wants trended on its patient reports (the AI
+// Trend Report section). Keyed by parameter, not test - a parameter assigned to
+// several tests (e.g. Glucose) is trended wherever it appears. No row = no trend.
+const ClientParameterTrend = sequelize.define('ClientParameterTrend', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  ...AUDIT_FIELDS,
+}, {
+  tableName: 'client_parameter_trend',
+  indexes: [{ unique: true, fields: ['clientId', 'parameterId'] }],
+});
+
 const ClientTestPrice = sequelize.define('ClientTestPrice', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
@@ -318,6 +333,10 @@ const ClientTestPrice = sequelize.define('ClientTestPrice', {
   // without touching the shared Test Master (whose own `active` is Chief
   // Admin's platform-wide switch).
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  // Set when this client switched the test Active while Chief Admin had it
+  // Inactive - the clinic keeps billing it even though it's off platform-wide.
+  // Cleared whenever the client switches it Inactive. See utils/testStatus.js.
+  overrideChiefInactive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   ...AUDIT_FIELDS,
 }, {
   tableName: 'client_test_price',
@@ -657,6 +676,11 @@ ClientTestPrice.belongsTo(TestMaster, { foreignKey: 'testId' });
 Client.hasMany(ParameterMaster, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 ParameterMaster.belongsTo(Client, { foreignKey: 'clientId' });
 
+Client.hasMany(ClientParameterTrend, { foreignKey: { name: 'clientId', allowNull: false }, onDelete: 'CASCADE' });
+ClientParameterTrend.belongsTo(Client, { foreignKey: 'clientId' });
+ParameterMaster.hasMany(ClientParameterTrend, { foreignKey: { name: 'parameterId', allowNull: false }, onDelete: 'CASCADE' });
+ClientParameterTrend.belongsTo(ParameterMaster, { foreignKey: 'parameterId' });
+
 Client.hasMany(ClientTestShortName, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 ClientTestShortName.belongsTo(Client, { foreignKey: 'clientId' });
 
@@ -830,6 +854,7 @@ module.exports = {
   ParameterMaster,
   ParameterNormalRange,
   ClientTestShortName,
+  ClientParameterTrend,
   ClientTestPrice,
   Package,
   Patient,

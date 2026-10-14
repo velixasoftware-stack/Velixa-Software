@@ -655,7 +655,47 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
    the top - required so the rest of the report lands in the same position
    whether printed digitally or onto paper that's already pre-printed with
    the lab's letterhead. */
+/* Lab report pieces (see LabReport.jsx). Spacing is padding, never margin,
+   and wrappers are flow-root, so each piece's measured height is exactly
+   the room it takes on the printed page. */
+.report-unit, .report-test-block, .report-print-header { display: flow-root; }
+.report-test-block { padding-top: 22px; }
+.report-test-title { margin: 0 0 6px; background: #f1f5f9; padding: 6px 10px; border-radius: 6px; }
+.report-unit-pad { padding-top: 10px; }
+.report-test-block .report-remarks { margin-top: 0; padding-top: 10px; }
+.report-param-table { table-layout: fixed; }
+.report-param-table th:nth-child(1), .report-param-table td:nth-child(1) { width: 38%; }
+.report-param-table th:nth-child(2), .report-param-table td:nth-child(2) { width: 20%; }
+.report-param-table th:nth-child(3), .report-param-table td:nth-child(3) { width: 16%; }
+.report-param-table td { overflow-wrap: anywhere; }
+
+/* Printed lab report: real A4 pages, each repeating the letterhead + patient
+   details. Hidden on screen; the continuous .report-screen-only sheet is
+   hidden in print instead. */
+.report-print-pages { display: none; }
+/* Named page: only the lab report forces A4 paper - bills etc. keep the printer's default. */
+@page report { size: A4; margin: 0; }
+.report-print-page {
+  width: 210mm; height: 297mm; padding: 4mm 12mm 7mm; /* small top margin so the letterhead starts near the top edge */ box-sizing: border-box;
+  display: flex; flex-direction: column; overflow: hidden; background: #fff;
+}
+.report-print-body { flex: 1; min-height: 0; }
+.report-print-footer { padding-top: 4px; font-size: 10px; color: #94a3b8; text-align: right; }
+.report-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; }
+.report-measure .report-print-page { margin-bottom: 4px; }
+@media print {
+  .report-screen-only, .report-measure { display: none !important; }
+  .report-print-pages { display: block; page: report; }
+  .report-print-page { break-after: page; page-break-after: always; }
+  .report-print-page:last-child { break-after: auto; page-break-after: auto; }
+  .main-content:has(.report-print-pages) { padding: 0 !important; }
+}
 .report-header-slot { min-height: 180px; display: flex; align-items: center; margin-bottom: 16px; }
+/* Lab report: a shown letterhead takes only its own height; tighter gaps
+   between letterhead, patient details and the first group heading. */
+.report-header-slot.has-letterhead { min-height: 0; }
+.report-header-slot:has(+ .lab-report-grid) { margin-bottom: 8px; }
+.report-patient-grid.lab-report-grid { margin-top: 0; padding: 10px 14px; gap: 6px 20px; }
 .report-letterhead { width: 100%; max-height: 180px; object-fit: contain; display: block; }
 .report-header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; width: 100%; }
 .report-logo { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
@@ -1484,3 +1524,40 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
   .bill-receipt-summary { width: 100%; align-items: stretch; }
   .bill-receipt-summary > div { min-width: 0; }
 }
+
+/* Active | Inactive two-option switch (components/StatusSwitch.jsx). */
+.status-switch { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 7px; overflow: hidden; flex: none; }
+.status-switch button {
+  background: #fff; color: #64748b; border: 0; border-radius: 0; padding: 4px 10px; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.status-switch button + button { border-left: 1px solid #cbd5e1; }
+.status-switch button:not(.on):not(:disabled):hover { background: #f1f5f9; color: #0f172a; }
+.status-switch button.on { cursor: default; opacity: 1; }
+.status-switch button.active-on { background: #dcfce7; color: #166534; }
+.status-switch button.inactive-on { background: #fee2e2; color: #b91c1c; }
+.status-switch button:disabled:not(.on) { cursor: not-allowed; opacity: 0.55; }
+
+/* Test code shown beside a test's group on the Test Master / Test Parameters screens. */
+.test-code { font-weight: 700; color: #1d4ed8; letter-spacing: 0.02em; }
+
+/* Result entry - the patient's earlier values as a small trend line under "Previous". */
+.rt-trend { display: flex; align-items: center; gap: 4px; margin-top: 2px; cursor: help; }
+.rt-trend small { font-size: 10px; color: #94a3b8; font-weight: 500; }
+
+/* Lab report - service group heading above its tests (each group after the
+   first starts a new printed page; on screen a rule marks the break). */
+.report-group-head { padding-top: 6px; text-align: center; border-bottom: 2px solid #1e3a8a; }
+.report-doc-title { font-size: 15px; font-weight: 700; color: #0f172a; }
+.report-group-title {
+  margin: 0; padding: 1px 0 3px; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #1e3a8a;
+}
+.report-group-break { margin-top: 0; }
+.report-screen-only .report-group-break { margin-top: 28px; border-top: 1px dashed #cbd5e1; padding-top: 18px; }
+/* The first test sits close under the group heading. */
+.report-group-head + .report-test-block, .report-unit:has(> .report-group-head) + .report-test-block { padding-top: 10px; }
+
+/* Lab report - "AI Trend" label under a test, above that test's trend rows. */
+.trend-test-head { padding-top: 10px; font-size: 12px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 6px; }
+.trend-ai-badge { font-size: 10px; font-weight: 700; background: #eef2ff; color: #2563eb; padding: 2px 6px; border-radius: 5px; letter-spacing: 0.03em; }
