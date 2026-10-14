@@ -20,7 +20,9 @@ function itemCharges(bill, items) {
   const billCharge = Math.max(0, gross - Number(bill.discount || 0) + Number(bill.taxAmount || 0));
   const out = new Map();
   let allocated = 0;
-  items.forEach((item, i) => {
+  // Always allocate in the order the tests were added, so the paise
+  // rounding lands on the same test whichever screen asks.
+  [...items].sort((a, b) => a.id - b.id).forEach((item, i) => {
     const price = Number(item.price) || 0;
     const charge = i === items.length - 1
       ? round2(billCharge - allocated)

@@ -130,10 +130,11 @@ export default function Orders() {
     setRefundError('');
   }
 
+  // The refund is fixed by the server: the test's amount after its share of
+  // the bill discount (item.maxRefund) - not its list price, and not editable.
   function startRefundFor(item) {
-    const remaining = Number(item.price) - Number(item.refundedAmount || 0);
     setRefundItem(item);
-    setRefundForm({ amount: String(remaining), mode: 'Cash', reason: '' });
+    setRefundForm({ amount: String(item.maxRefund ?? 0), mode: 'Cash', reason: '' });
     setRefundError('');
   }
 
@@ -395,19 +396,19 @@ export default function Orders() {
           <div className="modal-card" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <h2>Cancel / Refund — {refundBill.billNo}</h2>
             <p style={{ fontSize: 13, color: '#64748b' }}>
-              Cancelling a test is per-test - the rest of the bill's tests are unaffected. A refund can be
-              partial (e.g. bill amount ₹2000, refund only ₹100) and further partial refunds can be recorded
-              later up to what's left of that test's price.
+              Cancelling a test is per-test - the rest of the bill's tests are unaffected. The refund is that
+              test's amount after its share of the bill discount, so the discount on the remaining tests
+              stays correct.
             </p>
             <table>
-              <thead><tr><th>Test</th><th>Price</th><th>Refunded</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Test</th><th>Price</th><th title="Price after its share of the bill discount (and GST)">After Discount</th><th>Refunded</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {refundBill.tests.map((t) => {
-                  const remaining = Number(t.price) - Number(t.refundedAmount || 0);
                   return (
                     <tr key={t.id}>
                       <td>{t.testName}</td>
                       <td>₹{Number(t.price).toFixed(2)}</td>
+                      <td>{t.charge != null ? `₹${Number(t.charge).toFixed(2)}` : '—'}</td>
                       <td>₹{Number(t.refundedAmount || 0).toFixed(2)}</td>
                       <td>{t.itemStatus === 'CANCELLED' ? <span className="badge CANCELLED">Cancelled</span> : <span className="badge">Active</span>}</td>
                       <td>
@@ -427,15 +428,13 @@ export default function Orders() {
             {refundItem && (
               <form onSubmit={submitRefund} style={{ marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
                 <h4 style={{ margin: '0 0 8px' }}>Refund for {refundItem.testName}</h4>
+                <p style={{ fontSize: 13, color: '#475569', margin: '0 0 8px' }}>
+                  Price ₹{Number(refundItem.price).toFixed(2)} · after its share of the bill discount ₹{Number(refundItem.charge || 0).toFixed(2)}
+                  {Number(refundItem.fromDue) > 0 && <> · ₹{Number(refundItem.fromDue).toFixed(2)} clears the amount still due</>}
+                </p>
                 <div className="form-grid">
-                  <label><span>Refund Amount (max ₹{(Number(refundItem.price) - Number(refundItem.refundedAmount || 0)).toFixed(2)})</span>
-                    <input
-                      type="number" min="0.01" step="0.01"
-                      max={Number(refundItem.price) - Number(refundItem.refundedAmount || 0)}
-                      value={refundForm.amount}
-                      onChange={(e) => setRefundForm((f) => ({ ...f, amount: e.target.value }))}
-                      required
-                    />
+                  <label><span>Refund Amount</span>
+                    <input value={`₹${Number(refundForm.amount || 0).toFixed(2)}`} readOnly style={{ fontWeight: 700, background: '#f8fafc' }} />
                   </label>
                   <label><span>Payment Mode</span>
                     <select value={refundForm.mode} onChange={(e) => setRefundForm((f) => ({ ...f, mode: e.target.value }))}>

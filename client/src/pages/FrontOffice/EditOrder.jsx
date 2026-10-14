@@ -402,14 +402,12 @@ export default function EditOrder() {
             <p style={{ fontSize: 13, color: '#64748b', marginTop: 0 }}>
               Price ₹{money(cancelItem.price)} · charged ₹{money(cancelItem.charge)} after its share of the bill discount
               {Number(cancelItem.fromDue) > 0 && <> · ₹{money(cancelItem.fromDue)} comes off the amount still due</>}
-              . Maximum refund: <strong>₹{money(cancelItem.maxRefund)}</strong>.
+              . Refund: <strong>₹{money(cancelItem.maxRefund)}</strong>.
             </p>
             <form onSubmit={handleCancelTest}>
+              {/* Fixed by the server - the test's amount after its discount share. */}
               <label><span>Refund Amount</span>
-                <input
-                  type="number" min="0" step="0.01" max={cancelItem.maxRefund ?? undefined}
-                  value={cancelForm.amount} onChange={(e) => setCancelForm((f) => ({ ...f, amount: e.target.value }))}
-                />
+                <input value={`₹${money(cancelForm.amount)}`} readOnly style={{ fontWeight: 700, background: '#f8fafc' }} />
               </label>
               <label><span>Mode</span>
                 <select value={cancelForm.mode} onChange={(e) => setCancelForm((f) => ({ ...f, mode: e.target.value }))}>

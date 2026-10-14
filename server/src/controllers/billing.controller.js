@@ -467,15 +467,15 @@ async function cancelBillItem(req, res) {
   const allItems = await BillItem.findAll({ where: { billId: bill.id }, include: [Refund], order: [['id', 'ASC']] });
   const charge = itemCharges(bill, allItems).get(billItem.id);
   const { fromDue, maxRefund } = cancellationSplit(bill, charge);
-  if (refundAmount > maxRefund) {
+  // The refund is exactly the test's amount after its discount share (less
+  // whatever clears the bill's due) - no more, and no less: cancelling a
+  // test always returns precisely what was paid for it.
+  if (Math.abs(refundAmount - maxRefund) > 0.01) {
     return res.status(400).json({
       message: maxRefund > 0
-        ? `Refund cannot exceed ₹${maxRefund.toFixed(2)} - this test's charge after its share of the bill discount${fromDue > 0 ? ` and the ₹${fromDue.toFixed(2)} still due` : ''}`
-        : 'Nothing to refund for this test - its charge is covered by the amount still due on the bill',
+        ? `Refund must be ₹${maxRefund.toFixed(2)} - this test's amount after its share of the bill discount${fromDue > 0 ? `, less the ₹${fromDue.toFixed(2)} that clears the amount still due` : ''}`
+        : 'Nothing to refund for this test - its amount is covered by the amount still due on the bill',
     });
-  }
-  if (maxRefund > 0 && refundAmount <= 0) {
-    return res.status(400).json({ message: 'A refund amount greater than 0 is required' });
   }
   if (refundAmount > 0 && !mode?.trim()) {
     return res.status(400).json({ message: 'Refund payment mode is required' });
@@ -625,7 +625,13 @@ async function listBills(req, res) {
     limit: 200,
   });
 
-  const data = bills.map((b) => ({
+  const data = bills.map((bill) => {
+    // Per-test amount after the bill discount and its exact cancellation
+    // refund (utils/billCharges.js) - what the Orders Cancel/Refund uses.
+    const charged = withCharges(bill);
+    const byId = new Map(charged.BillItems.map((i) => [i.id, i]));
+    const b = bill;
+    return {
     id: b.id,
     billNo: b.billNo,
     walkInDate: b.walkInDate,
@@ -651,8 +657,12 @@ async function listBills(req, res) {
       status: item.Sample?.status,
       reportStatus: item.Sample?.Report?.status,
       refundedAmount: (item.Refunds || []).reduce((sum, r) => sum + Number(r.amount), 0),
+      charge: byId.get(item.id)?.charge,
+      maxRefund: byId.get(item.id)?.maxRefund,
+      fromDue: byId.get(item.id)?.fromDue,
     })),
-  }));
+    };
+  });
 
   return res.json(data);
 }
