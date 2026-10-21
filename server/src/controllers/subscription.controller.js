@@ -11,21 +11,49 @@ async function listSubscriptions(req, res) {
   return res.json(subs);
 }
 
-/** The subscription cycle (Start Date/End Date range) that covers today, if any. */
+/**
+ * Today as a local 'YYYY-MM-DD' string. The cycle columns are DATEONLY, so
+ * comparing them against a full timestamp (midnight-cast in Postgres) would
+ * drop a cycle on its own last day - e.g. a 1-day free grant never applied.
+ */
+function todayDateOnly() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** A one-month range starting today, for a fresh cycle once a client has nothing covering today. */
+function monthFromToday() {
+  const from = new Date();
+  const to = new Date(from);
+  to.setMonth(to.getMonth() + 1);
+  to.setDate(to.getDate() - 1);
+  return { from, to };
+}
+
+/**
+ * The subscription cycle (Start Date/End Date range) that covers today, if
+ * any. A PAID cycle wins over an unpaid one covering the same day - free days
+ * granted on top of a pending cycle must give access for exactly that range,
+ * after which the pending cycle (still covering today) takes over and the
+ * client is asked to pay again.
+ */
 async function findCurrentCycle(clientId) {
-  const today = new Date();
+  const today = todayDateOnly();
   return ClientSubscription.findOne({
     where: { clientId, fromDate: { [Op.lte]: today }, toDate: { [Op.gte]: today } },
-    order: [['toDate', 'DESC']],
+    order: [[ClientSubscription.sequelize.literal(`CASE WHEN "status" = 'PAID' THEN 0 ELSE 1 END`), 'ASC'], ['toDate', 'DESC']],
   });
 }
 
-/** Returns the subscription cycle covering today, creating a calendar-month one if none exists. */
+/** Returns the subscription cycle covering today, creating a one-month one from today if none exists. */
 async function getOrCreateCurrentSubscription(clientId) {
   let sub = await findCurrentCycle(clientId);
   if (!sub) {
     const client = await Client.findByPk(clientId);
-    sub = await createInitialSubscription(client);
+    // Not createInitialSubscription's calendar-month default - that is based on
+    // client.createdAt, so for a lapsed client it creates a cycle in the past
+    // (that never covers today) on every call.
+    sub = await createInitialSubscription(client, undefined, monthFromToday());
   }
   return sub;
 }
@@ -46,14 +74,14 @@ async function getCurrentSubscription(req, res) {
  */
 async function syncClientPaymentStatus(clientId) {
   const cycle = await findCurrentCycle(clientId);
-  const today = new Date();
+  const today = todayDateOnly();
 
   let status;
   if (!cycle) {
     status = 'EXPIRED'; // no subscription cycle (Start Date-End Date) covers today
   } else if (cycle.status === 'PAID') {
     status = 'PAID';
-  } else if (cycle.status === 'PENDING' && today > new Date(cycle.dueDate)) {
+  } else if (cycle.status === 'PENDING' && today > cycle.dueDate) {
     await cycle.update({ status: 'EXPIRED' });
     status = 'EXPIRED';
   } else {
@@ -132,7 +160,7 @@ async function getOrCreatePayableSubscription(clientId) {
   const latest = await ClientSubscription.findOne({ where: { clientId }, order: [['toDate', 'DESC']] });
   if (!latest) {
     const client = await Client.findByPk(clientId);
-    return createInitialSubscription(client);
+    return createInitialSubscription(client, undefined, monthFromToday());
   }
   if (latest.status !== 'PAID') return latest; // unpaid and not covering today either (a lapsed gap) - reuse it
 
@@ -168,8 +196,15 @@ async function grantFreeDays(req, res) {
     return res.status(400).json({ message: 'days must be a positive whole number' });
   }
 
+  // Starts the day after they're paid through - but never in the past: a
+  // lapsed client's free days start today, otherwise they'd be spent already.
   const paidThrough = await getPaidThroughDate(client.id);
-  const from = paidThrough ? new Date(new Date(paidThrough).getTime() + 24 * 60 * 60 * 1000) : new Date();
+  const today = todayDateOnly();
+  const from = new Date(); // local today
+  if (paidThrough && paidThrough >= today) {
+    const [y, m, d] = paidThrough.split('-').map(Number);
+    from.setFullYear(y, m - 1, d + 1);
+  }
   const to = new Date(from);
   to.setDate(to.getDate() + days - 1);
   const month = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`;
