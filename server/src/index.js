@@ -10,6 +10,7 @@ const routes = require('./routes');
 const { expireOverdueSubscriptions } = require('./controllers/subscription.controller');
 const { backfillSystemUsers } = require('./controllers/client.controller');
 const { seedDefaultPatientTitles } = require('./controllers/patientTitle.controller');
+const { serveStoredFile, backfillStoredFiles } = require('./utils/fileStore');
 
 const app = express();
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
@@ -29,7 +30,7 @@ app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
 }));
-app.use('/uploads', express.static(UPLOAD_ROOT));
+app.use('/uploads', express.static(UPLOAD_ROOT), serveStoredFile); // disk cache first, then the database copy
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api', routes);
@@ -123,8 +124,11 @@ async function start() {
     'DROP INDEX IF EXISTS payor_invoice_payor_id_month',
     'CREATE INDEX IF NOT EXISTS payor_invoice_payor_id_month_idx ON payor_invoice ("payorId", month)',
     'ALTER TABLE patient ADD COLUMN IF NOT EXISTS title VARCHAR(255)',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportTopMarginMm" INTEGER',
+    'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportBottomMarginMm" INTEGER',
   ].join(';\n'));
   await seedDefaultPatientTitles();
+  await backfillStoredFiles();
   await sequelize.query("ALTER TYPE enum_report_status ADD VALUE IF NOT EXISTS 'REVOKED'");
   await backfillSystemUsers();
   await expireOverdueSubscriptions();

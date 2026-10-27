@@ -108,6 +108,11 @@ const Client = sequelize.define('Client', {
   qrPaymentRequired: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   reportLogoPath: { type: DataTypes.STRING },
   reportLetterheadPath: { type: DataTypes.STRING },
+  // For a full A4 letterhead (printed as the whole page's background): the
+  // blank space to leave at its top/bottom for the printed header/footer
+  // design, in mm. Null = the report's defaults.
+  reportTopMarginMm: { type: DataTypes.INTEGER },
+  reportBottomMarginMm: { type: DataTypes.INTEGER },
   // What a client's own staff set from Report Branding, shown on bills/lab
   // reports - deliberately separate from clientName/address/mobile/email
   // above (which Chief Admin sets at client creation for its own records),
@@ -236,6 +241,17 @@ const TestGroup = sequelize.define('TestGroup', {
   name: { type: DataTypes.STRING, allowNull: false, unique: true },
   ...AUDIT_FIELDS,
 }, { tableName: 'test_group' });
+
+// Uploaded images (logos, letterheads, signatures) - the permanent copy, as
+// the host's disk is wiped on every deploy/restart (see utils/fileStore.js).
+// `path` is relative to /uploads, e.g. "12/letterhead.png".
+const StoredFile = sequelize.define('StoredFile', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  path: { type: DataTypes.STRING, allowNull: false, unique: true },
+  contentType: { type: DataTypes.STRING },
+  data: { type: DataTypes.BLOB, allowNull: false },
+  ...AUDIT_FIELDS,
+}, { tableName: 'stored_file' });
 
 // Chief-Admin-managed patient titles ("Mr.", "Mrs.", "Baby" ...) - one global
 // list offered in every client's billing screen and printed before the
@@ -900,6 +916,7 @@ module.exports = {
   RolePermission,
   ClientUser,
   TestGroup,
+  StoredFile,
   PatientTitle,
   TestMaster,
   ParameterMaster,

@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 
+// Same defaults the lab report uses when these are left blank.
+const DEFAULT_TOP_MM = 45;
+const DEFAULT_BOTTOM_MM = 25;
+
 export default function ReportBranding() {
   const [branding, setBranding] = useState({ logoUrl: null, letterheadUrl: null });
   const [logoFile, setLogoFile] = useState(null);
   const [letterheadFile, setLetterheadFile] = useState(null);
-  const [detailsForm, setDetailsForm] = useState({ clientName: '', address: '', mobile: '', email: '' });
+  const [detailsForm, setDetailsForm] = useState({ clientName: '', address: '', mobile: '', email: '', letterheadTopMm: '', letterheadBottomMm: '' });
+  const [letterheadIsPage, setLetterheadIsPage] = useState(false); // a whole A4 page vs a header strip
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -20,6 +25,7 @@ export default function ReportBranding() {
     setBranding(data);
     setDetailsForm({
       clientName: data.clientName || '', address: data.address || '', mobile: data.mobile || '', email: data.email || '',
+      letterheadTopMm: data.letterheadTopMm ?? '', letterheadBottomMm: data.letterheadBottomMm ?? '',
     });
   }
   async function loadDoctors() {
@@ -79,6 +85,8 @@ export default function ReportBranding() {
     formData.append('address', detailsForm.address);
     formData.append('mobile', detailsForm.mobile);
     formData.append('email', detailsForm.email);
+    formData.append('letterheadTopMm', detailsForm.letterheadTopMm);
+    formData.append('letterheadBottomMm', detailsForm.letterheadBottomMm);
     try {
       const { data } = await api.post('/branding', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setBranding(data);
@@ -97,8 +105,9 @@ export default function ReportBranding() {
     <div className="card">
       <h3>Report Branding</h3>
       <p style={{ fontSize: 13, color: '#64748b' }}>
-        Upload a logo and/or a full letterhead image. If a letterhead is set, it is used as the report's header
-        image; otherwise the logo (if any) is shown alongside the name below. The name/address/mobile/email below
+        Upload a logo and/or a letterhead image. A letterhead can be a header strip (printed at the top of the
+        report) or a full A4 page (portrait) - a full page is printed behind the whole report, with the results
+        inside its blank middle area (set the top/bottom space below to match your design). Without a letterhead, the logo (if any) is shown alongside the name below. The name/address/mobile/email below
         always appear on every bill copy and lab report, logo or not - this is separate from the
         name/address/contact details Chief Admin has on file for this account, so it's safe to customize for what
         patients should actually see without affecting anything on the Chief Admin side.
@@ -127,6 +136,20 @@ export default function ReportBranding() {
             <input value={detailsForm.email} onChange={(e) => setDetailsForm((f) => ({ ...f, email: e.target.value }))} />
           </label>
         </div>
+        <h4 style={{ marginTop: 6 }}>Full A4 Letterhead - Blank Space</h4>
+        <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px' }}>
+          Only used for a full-page letterhead: how far from the top and bottom edge the report starts and stops, so it
+          doesn&apos;t print over your letterhead&apos;s header and footer. Also kept when printing without the header
+          onto pre-printed letterhead paper. Leave blank for the default ({DEFAULT_TOP_MM} mm / {DEFAULT_BOTTOM_MM} mm).
+        </p>
+        <div className="form-grid">
+          <label><span>Top space (mm)</span>
+            <input type="number" min="0" max="120" placeholder={String(DEFAULT_TOP_MM)} value={detailsForm.letterheadTopMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadTopMm: e.target.value }))} />
+          </label>
+          <label><span>Bottom space (mm)</span>
+            <input type="number" min="0" max="120" placeholder={String(DEFAULT_BOTTOM_MM)} value={detailsForm.letterheadBottomMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadBottomMm: e.target.value }))} />
+          </label>
+        </div>
         <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
       </form>
 
@@ -139,9 +162,36 @@ export default function ReportBranding() {
           <figcaption>Current Logo</figcaption>
         </figure>
         <figure>
-          {branding.letterheadUrl ? <img src={branding.letterheadUrl} alt="Letterhead preview" /> : <div style={{ width: 220, height: 120, background: '#f1f5f9', borderRadius: 8 }} />}
-          <figcaption>Current Letterhead</figcaption>
+          {branding.letterheadUrl ? (
+            <img
+              src={branding.letterheadUrl}
+              alt="Letterhead preview"
+              onLoad={(e) => setLetterheadIsPage(e.target.naturalHeight / e.target.naturalWidth >= 1)}
+            />
+          ) : <div style={{ width: 220, height: 120, background: '#f1f5f9', borderRadius: 8 }} />}
+          <figcaption>
+            Current Letterhead
+            {branding.letterheadUrl && (letterheadIsPage ? ' (full A4 page)' : ' (header strip)')}
+          </figcaption>
         </figure>
+        {branding.letterheadUrl && letterheadIsPage && (
+          <figure>
+            {/* Shaded box = where the report prints (live as the mm values above change). */}
+            <div className="letterhead-a4-preview">
+              <img src={branding.letterheadUrl} alt="" />
+              <div
+                className="letterhead-a4-zone"
+                style={{
+                  top: `${((Number(detailsForm.letterheadTopMm === '' ? DEFAULT_TOP_MM : detailsForm.letterheadTopMm) || 0) / 297) * 100}%`,
+                  bottom: `${((Number(detailsForm.letterheadBottomMm === '' ? DEFAULT_BOTTOM_MM : detailsForm.letterheadBottomMm) || 0) / 297) * 100}%`,
+                }}
+              >
+                Report prints here
+              </div>
+            </div>
+            <figcaption>Print area preview</figcaption>
+          </figure>
+        )}
       </div>
     </div>
 

@@ -407,6 +407,8 @@ async function getBillReport(req, res) {
       email: bill.Client.brandingEmail || bill.Client.email,
       logoUrl: bill.Client.reportLogoPath,
       letterheadUrl: bill.Client.reportLetterheadPath,
+      letterheadTopMm: bill.Client.reportTopMarginMm,
+      letterheadBottomMm: bill.Client.reportBottomMarginMm,
     },
     // Same tests, flat in group order - kept for anything reading the old shape.
     tests: groups.flatMap((g) => g.tests),

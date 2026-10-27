@@ -1649,3 +1649,28 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 @media (min-width: 1100px) {
   .front-desk .fd-patient-grid .referral-field { grid-column: span 2; }
 }
+
+/* Lab report on a full A4 letterhead: the letterhead fills the whole page
+   behind the report, and the page's top/bottom padding (set inline from
+   Report Branding) keeps the report inside its blank middle. */
+.report-print-page.has-page-letterhead, .report-sheet.has-page-letterhead { position: relative; }
+.has-page-letterhead > :not(.report-page-bg) { position: relative; z-index: 1; }
+.report-page-bg {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  object-fit: fill; z-index: 0; pointer-events: none; user-select: none;
+}
+/* On screen the sheet is one long page - show the letterhead once, at A4 size. */
+.report-sheet.has-page-letterhead {
+  width: 210mm; max-width: 100%; min-height: 297mm; box-sizing: border-box;
+  padding-left: 12mm; padding-right: 12mm; border-radius: 2px;
+}
+.report-sheet.has-page-letterhead > .report-page-bg { height: 297mm; }
+.has-page-letterhead .report-patient-grid { background: rgba(248, 250, 252, 0.85); }
+/* Report Branding: A4 preview of a full-page letterhead with the print area shaded. */
+.letterhead-a4-preview { position: relative; width: 170px; aspect-ratio: 210 / 297; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #fff; }
+.branding-preview .letterhead-a4-preview img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: fill; border: 0; border-radius: 0; padding: 0; }
+.letterhead-a4-zone {
+  position: absolute; left: 6%; right: 6%; display: flex; align-items: center; justify-content: center;
+  background: rgba(37, 99, 235, 0.14); border: 1.5px dashed #2563eb; border-radius: 3px;
+  color: #1d4ed8; font-size: 10px; font-weight: 600; text-align: center;
+}

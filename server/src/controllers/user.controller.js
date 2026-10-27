@@ -1,11 +1,9 @@
-const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcryptjs');
 const { ClientUser, Role, Client } = require('../models');
 const { calculatePlanAmount } = require('../utils/pricing');
 const { isMarketingOnly } = require('../middleware/auth.middleware');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const { saveUpload } = require('../utils/fileStore');
 
 async function resolveRoles(roleNames) {
   const roles = await Role.findAll({ where: { name: roleNames } });
@@ -111,13 +109,7 @@ async function uploadSignature(req, res) {
   if (!user) return res.status(404).json({ message: 'User not found' });
   if (!req.file) return res.status(400).json({ message: 'A signature image file is required' });
 
-  const dir = path.join(UPLOAD_ROOT, String(req.params.clientId));
-  fs.mkdirSync(dir, { recursive: true });
-  const ext = path.extname(req.file.originalname) || '.png';
-  const filename = `signature-${user.id}${ext}`;
-  fs.writeFileSync(path.join(dir, filename), req.file.buffer);
-
-  const signaturePath = `/uploads/${req.params.clientId}/${filename}`;
+  const signaturePath = await saveUpload(req.params.clientId, `signature-${user.id}`, req.file);
   await user.update({ signaturePath });
   return res.json({ signaturePath });
 }

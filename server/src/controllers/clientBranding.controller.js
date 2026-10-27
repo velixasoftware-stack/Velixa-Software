@@ -1,17 +1,5 @@
-const fs = require('fs');
-const path = require('path');
 const { Client, ClientUser } = require('../models');
-
-const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
-
-function saveFile(clientId, field, file) {
-  const dir = path.join(UPLOAD_ROOT, String(clientId));
-  fs.mkdirSync(dir, { recursive: true });
-  const ext = path.extname(file.originalname) || '.png';
-  const filename = `${field}${ext}`;
-  fs.writeFileSync(path.join(dir, filename), file.buffer);
-  return `/uploads/${clientId}/${filename}`;
-}
+const { saveUpload } = require('../utils/fileStore');
 
 // GET /api/clients/branding  (current client's report branding - separate
 // from the clientName/address/mobile/email Chief Admin set at client
@@ -21,6 +9,8 @@ async function getBranding(req, res) {
   return res.json({
     logoUrl: client.reportLogoPath || null,
     letterheadUrl: client.reportLetterheadPath || null,
+    letterheadTopMm: client.reportTopMarginMm,
+    letterheadBottomMm: client.reportBottomMarginMm,
     clientName: client.brandingName || client.clientName,
     address: client.brandingAddress || client.address,
     mobile: client.brandingMobile || client.mobile,
@@ -38,10 +28,10 @@ async function uploadBranding(req, res) {
   const updates = {};
 
   if (req.files?.logo?.[0]) {
-    updates.reportLogoPath = saveFile(client.id, 'logo', req.files.logo[0]);
+    updates.reportLogoPath = await saveUpload(client.id, 'logo', req.files.logo[0]);
   }
   if (req.files?.letterhead?.[0]) {
-    updates.reportLetterheadPath = saveFile(client.id, 'letterhead', req.files.letterhead[0]);
+    updates.reportLetterheadPath = await saveUpload(client.id, 'letterhead', req.files.letterhead[0]);
   }
   const { clientName, address, mobile, email } = req.body;
   if (clientName !== undefined) {
@@ -51,6 +41,17 @@ async function uploadBranding(req, res) {
   if (address !== undefined) updates.brandingAddress = address.trim() || null;
   if (mobile !== undefined) updates.brandingMobile = mobile.trim() || null;
   if (email !== undefined) updates.brandingEmail = email.trim() || null;
+  // Full-page letterhead margins (mm); blank = back to the report's default.
+  for (const [field, column] of [['letterheadTopMm', 'reportTopMarginMm'], ['letterheadBottomMm', 'reportBottomMarginMm']]) {
+    const raw = req.body[field];
+    if (raw === undefined) continue;
+    if (raw === '' || raw === null) { updates[column] = null; continue; }
+    const mm = Number(raw);
+    if (!Number.isInteger(mm) || mm < 0 || mm > 120) {
+      return res.status(400).json({ message: 'Letterhead top/bottom space must be a whole number of mm between 0 and 120' });
+    }
+    updates[column] = mm;
+  }
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ message: 'Nothing to update - choose a file or change a branding detail' });
@@ -60,6 +61,8 @@ async function uploadBranding(req, res) {
   return res.json({
     logoUrl: client.reportLogoPath || null,
     letterheadUrl: client.reportLetterheadPath || null,
+    letterheadTopMm: client.reportTopMarginMm,
+    letterheadBottomMm: client.reportBottomMarginMm,
     clientName: client.brandingName || client.clientName,
     address: client.brandingAddress || client.address,
     mobile: client.brandingMobile || client.mobile,
@@ -99,7 +102,7 @@ async function uploadDoctorSignature(req, res) {
   if (!user) return res.status(404).json({ message: 'User not found' });
   if (!req.file) return res.status(400).json({ message: 'A signature image file is required' });
 
-  const signaturePath = saveFile(req.user.clientId, `signature-${user.id}`, req.file);
+  const signaturePath = await saveUpload(req.user.clientId, `signature-${user.id}`, req.file);
   await user.update({ signaturePath });
   return res.json({ signaturePath });
 }

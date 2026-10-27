@@ -14,10 +14,14 @@ function formatDateTime(d) {
 }
 
 /** Letterhead (or its reserved blank space) + title + patient details - printed identically at the top of every page. */
-function ReportHeader({ report, includeHeader, releasedAt, onImageLoad }) {
+function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLetterhead }) {
   const { patient, client } = report;
   return (
     <>
+      {/* A full-page letterhead is the page's own background (see LabReport) -
+          its header design already sits in the page's top margin, so no
+          header slot here at all. */}
+      {!pageLetterhead && (<>
       {/* Always reserves the same space here, header shown or not - so a
           report printed without the digital header (onto paper that
           already has the lab's letterhead pre-printed on it) leaves that
@@ -39,6 +43,7 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad }) {
           </div>
         ))}
       </div>
+      </>)}
 
       {/* "Laboratory Report" is printed above each service group's name instead (see buildUnits). */}
       <div className="report-patient-grid lab-report-grid">
@@ -326,6 +331,31 @@ function paginate(units, h) {
   return pages.map((p) => p.units);
 }
 
+// Blank space left at the top/bottom of a full A4 letterhead for its printed
+// header/footer design, unless the lab set its own in Report Branding.
+const DEFAULT_LETTERHEAD_TOP_MM = 45;
+const DEFAULT_LETTERHEAD_BOTTOM_MM = 25;
+
+/**
+ * Whether the uploaded letterhead is a whole A4 page (portrait - roughly as
+ * tall as it is wide or taller) rather than a header strip. A whole-page
+ * letterhead is printed as each page's background with the report on top of
+ * it; a strip stays a header image above the patient details.
+ */
+function usePageLetterhead(url) {
+  const [isPage, setIsPage] = useState(false);
+  useEffect(() => {
+    setIsPage(false);
+    if (!url) return undefined;
+    let alive = true;
+    const img = new Image();
+    img.onload = () => { if (alive) setIsPage(img.naturalHeight / img.naturalWidth >= 1); };
+    img.src = url;
+    return () => { alive = false; };
+  }, [url]);
+  return isPage;
+}
+
 export default function LabReport() {
   const { billId } = useParams();
   const [report, setReport] = useState(null);
@@ -385,6 +415,9 @@ export default function LabReport() {
     return () => window.removeEventListener('beforeprint', onBeforePrint);
   }, [measure]);
 
+  const pageLetterhead = usePageLetterhead(report?.client?.letterheadUrl);
+  useLayoutEffect(() => { measure(); }, [measure, pageLetterhead]);
+
   const pages = useMemo(() => (heights ? paginate(units, heights) : [units]), [units, heights]);
 
   if (error) return <div className="card"><p className="error-text">{error}</p></div>;
@@ -393,7 +426,18 @@ export default function LabReport() {
   const { tests } = report;
   const releasedAt = tests.map((t) => t.releasedAt).filter(Boolean).sort().slice(-1)[0];
   // The letterhead's height is only known once its image loads - re-measure then so pages split correctly.
-  const header = <ReportHeader report={report} includeHeader={includeHeader} releasedAt={releasedAt} onImageLoad={measure} />;
+  const header = <ReportHeader report={report} includeHeader={includeHeader} releasedAt={releasedAt} onImageLoad={measure} pageLetterhead={pageLetterhead} />;
+  // Full-page letterhead: the report prints inside its blank middle - the
+  // same space is kept with the header unticked (pre-printed stationery).
+  const pageClass = pageLetterhead ? ' has-page-letterhead' : '';
+  const pageStyle = pageLetterhead ? {
+    paddingTop: `${report.client.letterheadTopMm ?? DEFAULT_LETTERHEAD_TOP_MM}mm`,
+    paddingBottom: `${report.client.letterheadBottomMm ?? DEFAULT_LETTERHEAD_BOTTOM_MM}mm`,
+  } : undefined;
+  // An <img>, not a CSS background - browsers skip backgrounds when printing by default.
+  const pageBackground = pageLetterhead && includeHeader
+    ? <img src={report.client.letterheadUrl} alt="" className="report-page-bg" onLoad={measure} />
+    : null;
 
   return (
     <div>
@@ -421,7 +465,8 @@ export default function LabReport() {
       </div>
 
       {/* On screen: one continuous sheet. */}
-      <div className="report-sheet report-screen-only">
+      <div className={`report-sheet report-screen-only${pageClass}`} style={pageStyle}>
+        {pageBackground}
         {header}
         <UnitRun units={units} />
       </div>
@@ -430,7 +475,8 @@ export default function LabReport() {
           patient details as page 1. */}
       <div className="report-print-pages">
         {pages.map((pageUnits, i) => (
-          <div className="report-print-page" key={i}>
+          <div className={`report-print-page${pageClass}`} style={pageStyle} key={i}>
+            {pageBackground}
             <div className="report-print-header">{header}</div>
             <div className="report-print-body"><UnitRun units={pageUnits} /></div>
             <div className="report-print-footer">Page {i + 1} of {pages.length}</div>
@@ -440,11 +486,11 @@ export default function LabReport() {
 
       {/* Hidden measuring copy at the printed page's width. */}
       <div className="report-measure" ref={measureRef} aria-hidden="true">
-        <div className="report-print-page" style={{ height: 'auto' }}>
+        <div className={`report-print-page${pageClass}`} style={{ ...pageStyle, height: 'auto' }}>
           <div className="report-print-header" data-probe="header">{header}</div>
           <div className="report-print-footer" data-probe="footer">Page 1 of 1</div>
         </div>
-        <div className="report-print-page report-measure-body"><div data-probe="body" style={{ height: '100%' }} /></div>
+        <div className={`report-print-page report-measure-body${pageClass}`} style={pageStyle}><div data-probe="body" style={{ height: '100%' }} /></div>
         <div className="report-print-page" style={{ height: 'auto' }}>
           <div className="report-test-block" data-probe="title"><h4 className="report-test-title">Title (contd.)</h4></div>
           <table className="report-param-table"><thead data-probe="thead"><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Bio. Ref. Interval</th></tr></thead></table>
