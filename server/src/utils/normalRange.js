@@ -45,16 +45,20 @@ function resolveNormalRange(parameter, age, gender, ageUnit) {
   const chosen = genderMatch || anyMatch;
 
   if (chosen) {
-    return { normalRangeLow: chosen.normalRangeLow, normalRangeHigh: chosen.normalRangeHigh, matchedRuleId: chosen.id };
+    return { normalRangeLow: chosen.normalRangeLow, normalRangeHigh: chosen.normalRangeHigh, matchedRuleId: chosen.id, rangeText: chosen.rangeText || null };
   }
   return { normalRangeLow: parameter.normalRangeLow, normalRangeHigh: parameter.normalRangeHigh, matchedRuleId: null };
 }
 
-// The Normal Range text printed for this patient: the male/female version
-// for a male/female patient when one is set, otherwise the common
-// normalRangeText. Null when nothing is set (the report prints low - high).
-function printedRangeText(parameter, gender) {
+// The Normal Range text printed for this patient. When one of the
+// parameter's age/gender range rows matched (`resolved`, from
+// resolveNormalRange), it's that row's own printed text - or null, so the
+// report prints that row's low - high. Only when no row matched: the
+// parameter's male/female text for a male/female patient when set,
+// otherwise its common normalRangeText. Null = the report prints low - high.
+function printedRangeText(parameter, gender, resolved) {
   const pick = (v) => (v && v.toString().trim() ? v : null);
+  if (resolved?.matchedRuleId) return pick(resolved.rangeText);
   const g = (gender || '').toString().trim().toLowerCase();
   if (g === 'male' && pick(parameter.normalRangeTextMale)) return parameter.normalRangeTextMale;
   if (g === 'female' && pick(parameter.normalRangeTextFemale)) return parameter.normalRangeTextFemale;

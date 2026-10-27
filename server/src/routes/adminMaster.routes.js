@@ -47,6 +47,7 @@ router.put('/tests/:testId/parameters/:parameterId/sequence', testCtrl.setParame
 router.delete('/tests/:testId/parameters/:parameterId', testCtrl.removeParameter);
 router.post('/parameters/:parameterId/ranges', testCtrl.addNormalRange);
 router.delete('/parameters/:parameterId/ranges/:rangeId', testCtrl.deleteNormalRange);
+router.put('/parameters/:parameterId/ranges/:rangeId/text', testCtrl.setNormalRangeRowText); // printed text for that age/gender row
 router.put('/parameters/:parameterId/normal-range-text', testCtrl.setNormalRangeText); // printed reference range
 
 router.get('/tests/template', testCtrl.downloadTemplate);

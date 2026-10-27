@@ -3,15 +3,17 @@ import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import SearchSelect from '../../components/SearchSelect';
-import NormalRangeTextBoxes, {
-  useAutoRangeText, blankRangeTexts, useManageRangeDraft, rangeTextsChanged, saveRangeTexts, RangeTextsReadOnly,
+import {
+  blankRangeTexts, saveRangeTexts, RangeRowTextInput, OldRangeTextNote,
 } from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 
 const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
-const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '' });
+const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
+// A range row counts once it has a range or its own printed text (e.g. "Negative").
+const rowFilled = (r) => !!(r.normalRangeLow || r.normalRangeHigh || r.rangeText?.trim());
 const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeLow: '', normalRangeHigh: '', ...blankRangeTexts(), description: '' });
 // Narrower than the app-wide .form-grid default (minmax 200px) so Gender/Age/Unit/Range fields
 // wrap two-three to a row instead of stacking one-per-row on a narrow/mobile screen.
@@ -57,7 +59,6 @@ export default function TestParameters() {
   const [paramForm, setParamForm] = useState(blankParamForm());
   const [rangeRows, setRangeRows] = useState([]); // extra age/gender-specific rules for the parameter being created
   // Clubs Range Low/High and the age/gender rows into the printed Normal Range box until edited by hand.
-  useAutoRangeText(paramForm, setParamForm, paramForm.normalRangeLow, paramForm.normalRangeHigh, rangeRows);
   const [savingParam, setSavingParam] = useState(false);
   const [paramCopySearch, setParamCopySearch] = useState(''); // "copy from an existing parameter" search box in the Add Parameter modal
 
@@ -68,9 +69,7 @@ export default function TestParameters() {
   const [newRange, setNewRange] = useState(emptyRangeRow());
   // Manage ranges: the printed Normal Range boxes, filled from the saved
   // ranges plus the one being typed - saved by the same button as the range.
-  const [rangeDraft, setRangeDraft] = useManageRangeDraft(manageParam || NO_PARAM, newRange);
   // Any parameter: a universal one is edited as this clinic's own copy (server side).
-  const canEditRangeText = true;
   const [rangeError, setRangeError] = useState('');
   const [savingRange, setSavingRange] = useState(false);
 
@@ -160,7 +159,7 @@ export default function TestParameters() {
     e.preventDefault();
     if (savingParam) return; // guard against rapid double-submit creating a duplicate parameter
     setError('');
-    const normalRanges = paramForm.isInterpretation ? [] : rangeRows.filter((r) => r.normalRangeLow || r.normalRangeHigh);
+    const normalRanges = paramForm.isInterpretation ? [] : rangeRows.filter(rowFilled);
     setSavingParam(true);
     try {
       await api.post(`/test-config/tests/${selectedTestId}/parameters`, { ...paramForm, normalRanges });
@@ -189,22 +188,18 @@ export default function TestParameters() {
     setRangeError('');
   }
 
-  // One Save: adds the range typed (if any) and saves the Normal Range boxes
-  // (if changed) - either can be done on its own.
+  // Adds the age/gender range typed below the table (with its own printed text, if any).
   async function handleAddExistingRange(e) {
     e.preventDefault();
     if (savingRange) return; // guard against rapid double-submit creating a duplicate range rule
     setRangeError('');
-    const hasRange = !!(newRange.normalRangeLow || newRange.normalRangeHigh);
-    const textChanged = canEditRangeText && rangeTextsChanged(manageParam, rangeDraft);
-    if (!hasRange && !textChanged) {
-      setRangeError('Enter a Range Low / High, or change the Normal Range text, then Save.');
+    if (!rowFilled(newRange)) {
+      setRangeError('Enter a Range Low / High (or the text printed on the report), then Save.');
       return;
     }
     setSavingRange(true);
     try {
-      if (hasRange) await api.post(`/test-config/parameters/${manageParam.id}/ranges`, newRange);
-      if (textChanged) await saveRangeTexts('/test-config', manageParam.id, rangeDraft);
+      await api.post(`/test-config/parameters/${manageParam.id}/ranges`, newRange);
       setNewRange(emptyRangeRow());
       const data = await loadAll();
       const freshTest = data.tests.find((t) => t.id === selectedTestId);
@@ -231,6 +226,33 @@ export default function TestParameters() {
       setRangeError(err.response?.data?.message || 'Failed to reset');
     } finally {
       setSavingRange(false);
+    }
+  }
+
+  async function refreshManageParam() {
+    const data = await loadAll();
+    const freshTest = data.tests.find((t) => t.id === selectedTestId);
+    setManageParam((prev) => freshTest?.ParameterMasters?.find((p) => p.id === prev.id) || prev);
+  }
+
+  // The Normal Range printed for patients one saved age/gender row matches.
+  async function handleRowText(rangeId, rangeText) {
+    setRangeError('');
+    try {
+      await api.put(`/test-config/parameters/${manageParam.id}/ranges/${rangeId}/text`, { rangeText });
+      await refreshManageParam();
+    } catch (err) {
+      setRangeError(err.response?.data?.message || 'Failed to save the printed range');
+    }
+  }
+
+  async function handleClearOldRangeText() {
+    setRangeError('');
+    try {
+      await saveRangeTexts('/test-config', manageParam.id, { normalRangeText: '', normalRangeTextMale: '', normalRangeTextFemale: '' });
+      await refreshManageParam();
+    } catch (err) {
+      setRangeError(err.response?.data?.message || 'Failed to clear the older printed text');
     }
   }
 
@@ -542,11 +564,17 @@ It will no longer appear on result entry. Reports already released keep their va
                       <label><span>Range High</span>
                         <input value={r.normalRangeHigh} onChange={(e) => updateRangeRow(idx, 'normalRangeHigh', e.target.value)} />
                       </label>
+                      <label><span>Printed on Report</span>
+                        <input value={r.rangeText} onChange={(e) => updateRangeRow(idx, 'rangeText', e.target.value)} placeholder={r.normalRangeLow || r.normalRangeHigh ? 'Low - High' : 'e.g. Negative'} />
+                      </label>
                       <button type="button" className="secondary" onClick={() => removeRangeRow(idx)}>Remove</button>
                     </div>
                   ))}
                   <button type="button" className="secondary" onClick={addRangeRow}>+ Add Age/Gender Range</button>
-                  <NormalRangeTextBoxes form={paramForm} setForm={setParamForm} />
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0' }}>
+                    Printed on Report: what the report shows as the Normal Range for a patient that row matches - leave
+                    empty to print its Range Low - High, or type text such as &quot;Negative&quot;.
+                  </p>
                 </div>
               )}
 
@@ -581,7 +609,7 @@ It will no longer appear on result entry. Reports already released keep their va
               </div>
             )}
             <table>
-              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th></th></tr></thead>
+              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
               <tbody>
                 {(manageParam.ParameterNormalRanges || []).map((r) => (
                   <tr key={r.id}>
@@ -590,10 +618,11 @@ It will no longer appear on result entry. Reports already released keep their va
                     <td>{r.ageMax ?? '—'}</td>
                     <td>{r.ageUnit || 'Years'}</td>
                     <td>{r.normalRangeLow || '—'} - {r.normalRangeHigh || '—'}</td>
+                    <td><RangeRowTextInput row={r} onSave={(text) => handleRowText(r.id, text)} /></td>
                     <td><button type="button" className="secondary" onClick={() => handleDeleteRange(r.id)}>Remove</button></td>
                   </tr>
                 ))}
-                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={6}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
+                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={7}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
               </tbody>
             </table>
 
@@ -620,11 +649,12 @@ It will no longer appear on result entry. Reports already released keep their va
               <label><span>Range High</span>
                 <input value={newRange.normalRangeHigh} onChange={(e) => setNewRange((f) => ({ ...f, normalRangeHigh: e.target.value }))} />
               </label>
-              <div style={{ gridColumn: '1 / -1' }}>
-                {canEditRangeText ? <NormalRangeTextBoxes form={rangeDraft} setForm={setRangeDraft} /> : <RangeTextsReadOnly param={manageParam} />}
-              </div>
+              <label><span>Printed on Report</span>
+                <input value={newRange.rangeText} onChange={(e) => setNewRange((f) => ({ ...f, rangeText: e.target.value }))} placeholder={newRange.normalRangeLow || newRange.normalRangeHigh ? 'Low - High' : 'e.g. Negative'} />
+              </label>
               <button type="submit" disabled={savingRange}>{savingRange ? 'Saving…' : 'Save'}</button>
             </form>
+            <OldRangeTextNote param={manageParam} onClear={handleClearOldRangeText} />
             {rangeError && <p className="error-text">{rangeError}</p>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button type="button" onClick={() => setManageParam(null)}>Close</button>

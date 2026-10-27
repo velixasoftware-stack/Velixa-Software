@@ -453,6 +453,7 @@ async function addParameter(req, res) {
       ageUnit: r.ageUnit || 'Years',
       normalRangeLow: r.normalRangeLow,
       normalRangeHigh: r.normalRangeHigh,
+      rangeText: r.rangeText?.toString().trim() || null,
     });
   }
 
@@ -586,14 +587,15 @@ async function addNormalRange(req, res) {
   if (rowClientId) await ensureClientOverride(rowClientId, parameter);
 
   const { gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh } = req.body;
+  const rangeText = req.body.rangeText?.toString().trim() || null;
   if (gender && !GENDER_OPTIONS.includes(gender)) {
     return res.status(400).json({ message: `Invalid gender "${gender}" - must be one of ${GENDER_OPTIONS.join(', ')}` });
   }
   if (ageUnit && !AGE_UNIT_OPTIONS.includes(ageUnit)) {
     return res.status(400).json({ message: `Invalid ageUnit "${ageUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
   }
-  if (!normalRangeLow?.toString().trim() && !normalRangeHigh?.toString().trim()) {
-    return res.status(400).json({ message: 'At least one of normalRangeLow/normalRangeHigh is required' });
+  if (!normalRangeLow?.toString().trim() && !normalRangeHigh?.toString().trim() && !rangeText) {
+    return res.status(400).json({ message: 'Enter a Range Low / High, or the text printed on the report' });
   }
 
   const normalizedAgeMin = ageMin === '' || ageMin == null ? null : Number(ageMin);
@@ -623,9 +625,41 @@ async function addNormalRange(req, res) {
     ageMin: normalizedAgeMin,
     ageMax: normalizedAgeMax,
     ageUnit: normalizedAgeUnit,
-    normalRangeLow, normalRangeHigh,
+    normalRangeLow, normalRangeHigh, rangeText,
   });
   return res.status(201).json(range);
+}
+
+// PUT /api/masters/parameters/:parameterId/ranges/:rangeId/text  Body: { rangeText }
+// The Normal Range printed for patients this age/gender row matches. A clinic
+// changing it on a universal parameter changes its own copy only (made now if
+// needed), like adding/removing a range.
+async function setNormalRangeRowText(req, res) {
+  const parameter = await ParameterMaster.findByPk(req.params.parameterId);
+  if (!parameter) return res.status(404).json({ message: 'Parameter not found' });
+  let range = await ParameterNormalRange.findOne({ where: { id: req.params.rangeId, parameterId: parameter.id } });
+  if (!range) return res.status(404).json({ message: 'Normal range rule not found' });
+  const rangeText = req.body.rangeText?.toString().trim() || null;
+  const clientId = requesterClientId(req);
+
+  if (clientId && parameter.clientId == null) {
+    await sequelize.transaction(async (transaction) => {
+      const { copyOf } = await ensureClientOverride(clientId, parameter, transaction);
+      if (range.clientId == null) {
+        const copyId = copyOf.get(range.id);
+        if (!copyId) throw Object.assign(new Error('That range is not in your clinic\'s ranges any more - reload and try again'), { status: 404 });
+        range = await ParameterNormalRange.findByPk(copyId, { transaction });
+      } else if (range.clientId !== clientId) {
+        throw Object.assign(new Error('Normal range rule not found'), { status: 404 });
+      }
+      await range.update({ rangeText }, { transaction });
+    });
+    return res.json(range);
+  }
+  if (clientId && parameter.clientId !== clientId) return res.status(403).json({ message: 'This parameter belongs to another client' });
+  if (range.clientId != null) return res.status(404).json({ message: 'Normal range rule not found' });
+  await range.update({ rangeText });
+  return res.json(range);
 }
 
 // DELETE /api/masters/parameters/:parameterId/ranges/:rangeId
@@ -1030,6 +1064,6 @@ async function commitUpload(req, res) {
 }
 
 module.exports = {
-  createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, reorderParameters, setParameterSequence, removeParameter,
+  createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, setNormalRangeRowText, reorderParameters, setParameterSequence, removeParameter,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend, setNormalRangeText, resetParameterRanges,
 };

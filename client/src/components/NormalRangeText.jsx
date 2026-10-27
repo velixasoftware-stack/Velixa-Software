@@ -158,3 +158,47 @@ export function RangeTextsReadOnly({ param }) {
     </div>
   );
 }
+
+/**
+ * "Printed on Report" box for one saved age/gender range row - what the
+ * report prints as the Normal Range for a patient that row matches. Saves
+ * when the box loses focus (if changed). Empty = the row's own low - high.
+ */
+export function RangeRowTextInput({ row, onSave, disabled }) {
+  const [text, setText] = useState(row.rangeText || '');
+  useEffect(() => { setText(row.rangeText || ''); }, [row.id, row.rangeText]);
+  const fallback = pair(row.normalRangeLow, row.normalRangeHigh);
+  return (
+    <input
+      value={text}
+      disabled={disabled}
+      placeholder={fallback || 'e.g. Negative'}
+      title="Printed on the report for patients this row matches. Empty = the row's low - high."
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => { if (text.trim() !== (row.rangeText || '').trim()) onSave(text.trim()); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      style={{ minWidth: 120 }}
+    />
+  );
+}
+
+/**
+ * The parameter-level printed text from before per-row text existed. It's
+ * now only used for a patient no range row matches - shown so it isn't a
+ * hidden surprise, with a way to clear it.
+ */
+export function OldRangeTextNote({ param, onClear, disabled }) {
+  const texts = FIELDS.filter((f) => (param[f.key] || '').trim());
+  if (texts.length === 0) return null;
+  return (
+    <div style={{ fontSize: 12, color: '#64748b', margin: '10px 0 0', padding: '8px 10px', background: '#f8fafc', borderRadius: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <strong>Older printed text - used only when no row above matches the patient:</strong>
+        {onClear && <button type="button" className="secondary" style={{ padding: '2px 10px' }} onClick={onClear} disabled={disabled}>Clear</button>}
+      </div>
+      {texts.map((f) => (
+        <div key={f.key} style={{ whiteSpace: 'pre-wrap' }}>{f.label}: {param[f.key]}</div>
+      ))}
+    </div>
+  );
+}

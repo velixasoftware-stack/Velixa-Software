@@ -69,7 +69,7 @@ async function ensureClientOverride(clientId, parameter, transaction) {
     const copy = await ParameterNormalRange.create({
       parameterId: parameter.id, clientId,
       gender: r.gender, ageMin: r.ageMin, ageMax: r.ageMax, ageUnit: r.ageUnit,
-      normalRangeLow: r.normalRangeLow, normalRangeHigh: r.normalRangeHigh,
+      normalRangeLow: r.normalRangeLow, normalRangeHigh: r.normalRangeHigh, rangeText: r.rangeText,
     }, { transaction });
     copyOf.set(r.id, copy.id);
   }

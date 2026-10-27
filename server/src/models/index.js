@@ -341,6 +341,9 @@ const ParameterNormalRange = sequelize.define('ParameterNormalRange', {
   ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - the unit ageMin/ageMax are expressed in (e.g. a "0-7 days" newborn band)
   normalRangeLow: { type: DataTypes.STRING },
   normalRangeHigh: { type: DataTypes.STRING },
+  // What the report prints as the Normal Range for a patient this row matches
+  // (e.g. "4.5 - 5.5" or "Negative"); empty = this row's low - high.
+  rangeText: { type: DataTypes.TEXT },
   // Null = the parameter's own rows (Chief Admin's for a universal parameter).
   // Set = a clinic's private copy of a universal parameter's ranges, used only
   // for that clinic once it has customised them (ClientParameterOverride).
