@@ -1696,3 +1696,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .lab-report-info strong { font-weight: 600; color: #0f172a; overflow-wrap: anywhere; }
 .has-page-letterhead .lab-report-info { background: rgba(255, 255, 255, 0.75); }
 .report-header-slot:has(+ .lab-report-info) { margin-bottom: 8px; }
+
+/* Normal Ranges dialog: compact icon actions and the Small / Big text box. */
+.range-row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.range-row-actions .icon-btn { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: #f1f5f9; color: #475569; }
+.range-row-actions .icon-btn:hover { background: #e2e8f0; }
+.range-row-actions .icon-btn.danger-icon { color: #b91c1c; background: #fef2f2; }
+.range-row-actions .icon-btn.danger-icon:hover { background: #fee2e2; }
+.range-row-actions .icon-btn.ok-icon { color: #fff; background: #16a34a; }
+.range-row-actions .icon-btn.ok-icon:hover { background: #15803d; }
+.range-row-editing td { vertical-align: top; background: #f8fafc; }
+.range-row-editing select, .range-row-editing input { padding: 4px 6px; font-size: 12px; }
+.range-text-field { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.range-text-field .remarks-size { align-self: flex-start; }
+.range-text-field textarea { resize: vertical; min-height: 64px; font-size: 12px; }
+.range-row-editing select { min-width: 84px; }
+.range-row-editing input[type='number'] { min-width: 56px; }

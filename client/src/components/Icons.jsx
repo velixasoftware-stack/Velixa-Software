@@ -24,6 +24,8 @@ const PATHS = {
   edit: 'M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z',
   refund: 'M3 12a9 9 0 1 0 3-6.7M3 4v5h5',
   percent: 'M19 5L5 19M7.5 7a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM16.5 22a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
+  check: 'M5 12l5 5L20 7',
 };
 
 export function Icon({ name, size = 20, ...rest }) {

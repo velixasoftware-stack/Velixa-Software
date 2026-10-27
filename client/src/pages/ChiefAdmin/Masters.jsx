@@ -4,7 +4,7 @@ import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
 import StatusSwitch from '../../components/StatusSwitch';
 import {
-  blankRangeTexts, saveRangeTexts, RangeRowTextInput, OldRangeTextNote,
+  blankRangeTexts, saveRangeTexts, RangeRow, RangeTextField, OldRangeTextNote,
 } from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
@@ -304,14 +304,15 @@ export default function Masters() {
     setManageParam((prev) => freshTest?.ParameterMasters?.find((p) => p.id === prev.id) || prev);
   }
 
-  // The Normal Range printed for patients one saved age/gender row matches.
-  async function handleRowText(rangeId, rangeText) {
+  // Saves an edited age/gender row (incl. the Normal Range printed for patients it matches).
+  async function handleUpdateRange(rangeId, changes) {
     setRangeError('');
     try {
-      await api.put(`/admin/masters/parameters/${manageParam.id}/ranges/${rangeId}/text`, { rangeText });
+      await api.put(`/admin/masters/parameters/${manageParam.id}/ranges/${rangeId}`, changes);
       await refreshManageParam();
     } catch (err) {
-      setRangeError(err.response?.data?.message || 'Failed to save the printed range');
+      setRangeError(err.response?.data?.message || 'Failed to save the range');
+      throw err; // keeps the row open for correcting
     }
   }
 
@@ -745,10 +746,12 @@ This cannot be undone.`)) return;
                       <label><span>Range High</span>
                         <input value={r.normalRangeHigh} onChange={(e) => updateRangeRow(idx, 'normalRangeHigh', e.target.value)} />
                       </label>
-                      <label><span>Printed on Report</span>
-                        <input value={r.rangeText} onChange={(e) => updateRangeRow(idx, 'rangeText', e.target.value)} placeholder={r.normalRangeLow || r.normalRangeHigh ? 'Low - High' : 'e.g. Negative'} />
+                      <label style={{ gridColumn: 'span 2' }}><span>Printed on Report</span>
+                        <RangeTextField value={r.rangeText} onChange={(v) => updateRangeRow(idx, 'rangeText', v)} placeholder={r.normalRangeLow || r.normalRangeHigh ? 'Empty = Low - High' : 'e.g. Negative'} />
                       </label>
-                      <button type="button" className="secondary" onClick={() => removeRangeRow(idx)}>Remove</button>
+                      <div className="range-row-actions" style={{ alignSelf: 'end' }}>
+                        <button type="button" className="icon-btn danger-icon" title="Remove this range" onClick={() => removeRangeRow(idx)}><Icon name="trash" size={14} /></button>
+                      </div>
                     </div>
                   ))}
                   <button type="button" className="secondary" onClick={addRangeRow}>+ Add Age/Gender Range</button>
@@ -770,7 +773,7 @@ This cannot be undone.`)) return;
 
       {manageParam && (
         <div className="modal-overlay" onClick={() => setManageParam(null)}>
-          <div className="modal-card" style={{ width: 680, maxWidth: 'calc(100vw - 32px)', textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card" style={{ width: 800, maxWidth: 'calc(100vw - 32px)', textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
             <h2>Normal Ranges — {manageParam.parameterName}</h2>
             <p style={{ fontSize: 13, color: '#64748b' }}>
               Default range: {manageParam.normalRangeLow || '—'} - {manageParam.normalRangeHigh || '—'} (used when no rule below matches).
@@ -779,15 +782,14 @@ This cannot be undone.`)) return;
               <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
               <tbody>
                 {(manageParam.ParameterNormalRanges || []).map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.gender}</td>
-                    <td>{r.ageMin ?? '—'}</td>
-                    <td>{r.ageMax ?? '—'}</td>
-                    <td>{r.ageUnit || 'Years'}</td>
-                    <td>{r.normalRangeLow || '—'} - {r.normalRangeHigh || '—'}</td>
-                    <td><RangeRowTextInput row={r} onSave={(text) => handleRowText(r.id, text)} /></td>
-                    <td><button type="button" className="secondary" onClick={() => handleDeleteRange(r.id)}>Remove</button></td>
-                  </tr>
+                  <RangeRow
+                    key={r.id}
+                    row={r}
+                    genders={GENDER_OPTIONS}
+                    ageUnits={AGE_UNIT_OPTIONS}
+                    onSave={(changes) => handleUpdateRange(r.id, changes)}
+                    onDelete={() => handleDeleteRange(r.id)}
+                  />
                 ))}
                 {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={7}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
               </tbody>
@@ -816,8 +818,8 @@ This cannot be undone.`)) return;
               <label><span>Range High</span>
                 <input value={newRange.normalRangeHigh} onChange={(e) => setNewRange((f) => ({ ...f, normalRangeHigh: e.target.value }))} />
               </label>
-              <label><span>Printed on Report</span>
-                <input value={newRange.rangeText} onChange={(e) => setNewRange((f) => ({ ...f, rangeText: e.target.value }))} placeholder={newRange.normalRangeLow || newRange.normalRangeHigh ? 'Low - High' : 'e.g. Negative'} />
+              <label style={{ gridColumn: 'span 2' }}><span>Printed on Report</span>
+                <RangeTextField value={newRange.rangeText} onChange={(v) => setNewRange((f) => ({ ...f, rangeText: v }))} placeholder={newRange.normalRangeLow || newRange.normalRangeHigh ? 'Empty = Low - High' : 'e.g. Negative'} />
               </label>
               <button type="submit" disabled={savingRange}>{savingRange ? 'Saving…' : 'Save'}</button>
             </form>

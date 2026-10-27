@@ -8,6 +8,7 @@
 // on). Any box can also be typed on its own, e.g. "Negative".
 import { useEffect, useState } from 'react';
 import api from '../api/client';
+import { Icon } from './Icons';
 
 function pair(low, high) {
   const l = (low ?? '').toString().trim();
@@ -160,25 +161,102 @@ export function RangeTextsReadOnly({ param }) {
 }
 
 /**
- * "Printed on Report" box for one saved age/gender range row - what the
- * report prints as the Normal Range for a patient that row matches. Saves
- * when the box loses focus (if changed). Empty = the row's own low - high.
+ * "Printed on Report" text with a Small / Big switch (like Remarks): Small is
+ * one line, Big a multi-line box for longer text. Text with line breaks
+ * opens Big. Empty = the row's own low - high is printed.
  */
-export function RangeRowTextInput({ row, onSave, disabled }) {
-  const [text, setText] = useState(row.rangeText || '');
-  useEffect(() => { setText(row.rangeText || ''); }, [row.id, row.rangeText]);
-  const fallback = pair(row.normalRangeLow, row.normalRangeHigh);
+export function RangeTextField({ value, onChange, placeholder, autoFocus }) {
+  const [big, setBig] = useState(() => (value || '').includes('\n'));
+  const multiLine = (value || '').includes('\n');
   return (
-    <input
-      value={text}
-      disabled={disabled}
-      placeholder={fallback || 'e.g. Negative'}
-      title="Printed on the report for patients this row matches. Empty = the row's low - high."
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => { if (text.trim() !== (row.rangeText || '').trim()) onSave(text.trim()); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-      style={{ minWidth: 120 }}
-    />
+    <div className="range-text-field">
+      <div className="remarks-size" role="group" aria-label="Box size">
+        <button type="button" className={big ? '' : 'on'} onClick={() => setBig(false)} disabled={multiLine} title={multiLine ? 'Has more than one line - keep the big box' : 'One line'}>Small</button>
+        <button type="button" className={big ? 'on' : ''} onClick={() => setBig(true)} title="Several lines">Big</button>
+      </div>
+      {big ? (
+        <textarea rows={3} value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} />
+      ) : (
+        <input value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One saved age/gender range row in the Normal Ranges dialog: shown as
+ * text, with small Edit / Delete icons; Edit turns the row into inputs
+ * (including its Printed on Report text) with Save / Cancel.
+ * onSave(changes) and onDelete() return promises.
+ */
+export function RangeRow({ row, genders, ageUnits, onSave, onDelete }) {
+  const toDraft = () => ({
+    gender: row.gender || 'Any', ageMin: row.ageMin ?? '', ageMax: row.ageMax ?? '', ageUnit: row.ageUnit || 'Years',
+    normalRangeLow: row.normalRangeLow ?? '', normalRangeHigh: row.normalRangeHigh ?? '', rangeText: row.rangeText || '',
+  });
+  const [draft, setDraft] = useState(null); // null = not editing
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target ? e.target.value : e }));
+
+  async function save() {
+    setBusy(true);
+    try { await onSave(draft); setDraft(null); } catch { /* the dialog shows the error */ } finally { setBusy(false); }
+  }
+  async function remove() {
+    if (!window.confirm('Delete this range row?')) return;
+    setBusy(true);
+    try { await onDelete(); } finally { setBusy(false); }
+  }
+
+  if (!draft) {
+    const range = pair(row.normalRangeLow, row.normalRangeHigh);
+    return (
+      <tr>
+        <td>{row.gender}</td>
+        <td>{row.ageMin ?? '—'}</td>
+        <td>{row.ageMax ?? '—'}</td>
+        <td>{row.ageUnit || 'Years'}</td>
+        <td>{range || '—'}</td>
+        <td style={{ whiteSpace: 'pre-wrap' }}>
+          {row.rangeText ? row.rangeText : <span style={{ color: '#94a3b8' }}>{range || '—'}</span>}
+        </td>
+        <td>
+          <div className="range-row-actions">
+            <button type="button" className="icon-btn" title="Edit this range" onClick={() => setDraft(toDraft())} disabled={busy}><Icon name="edit" size={14} /></button>
+            <button type="button" className="icon-btn danger-icon" title="Delete this range" onClick={remove} disabled={busy}><Icon name="trash" size={14} /></button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="range-row-editing">
+      <td><select value={draft.gender} onChange={set('gender')}>{genders.map((g) => <option key={g}>{g}</option>)}</select></td>
+      <td><input type="number" min="0" value={draft.ageMin} onChange={set('ageMin')} style={{ width: 64 }} /></td>
+      <td><input type="number" min="0" value={draft.ageMax} onChange={set('ageMax')} style={{ width: 64 }} /></td>
+      <td><select value={draft.ageUnit} onChange={set('ageUnit')}>{ageUnits.map((u) => <option key={u}>{u}</option>)}</select></td>
+      <td>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input value={draft.normalRangeLow} onChange={set('normalRangeLow')} placeholder="Low" style={{ width: 54 }} />
+          <span>-</span>
+          <input value={draft.normalRangeHigh} onChange={set('normalRangeHigh')} placeholder="High" style={{ width: 54 }} />
+        </div>
+      </td>
+      <td>
+        <RangeTextField
+          value={draft.rangeText}
+          onChange={set('rangeText')}
+          placeholder={pair(draft.normalRangeLow, draft.normalRangeHigh) || 'e.g. Negative'}
+        />
+      </td>
+      <td>
+        <div className="range-row-actions">
+          <button type="button" className="icon-btn ok-icon" title="Save" onClick={save} disabled={busy}><Icon name="check" size={14} /></button>
+          <button type="button" className="icon-btn" title="Cancel" onClick={() => setDraft(null)} disabled={busy}><Icon name="close" size={14} /></button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
