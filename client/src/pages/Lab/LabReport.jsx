@@ -4,14 +4,17 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import ShareButton from '../../components/ShareButton';
 import { ReportRemarks } from '../../components/Remarks';
-import { doctorLabel, patientLabel } from '../../utils/format';
+import { doctorLabel, patientLabel, formatDateDMY } from '../../utils/format';
 import Sparkline from '../../components/Sparkline';
 import { rangeLabel } from '../../components/NormalRangeText';
 import { analyzeLetterhead, DEFAULT_LETTERHEAD_TOP_MM, DEFAULT_LETTERHEAD_BOTTOM_MM } from '../../utils/letterhead';
 
+/** Day-Month-Year and time, e.g. "16-OCT-2026 05:11 PM". */
 function formatDateTime(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleString();
+  const date = new Date(d);
+  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${formatDateDMY(date)} ${time}`;
 }
 
 /** Letterhead (or its reserved blank space) + title + patient details - printed identically at the top of every page. */
