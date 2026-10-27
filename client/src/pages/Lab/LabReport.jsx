@@ -55,9 +55,9 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
         <div><span>Patient Name</span><strong>{patientLabel(patient)}</strong></div>
         <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
         <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
-        <div><span>Collection Date</span><strong>{formatDateTime(collectedAt)}</strong></div>
+        <div><span>Order Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
         <div><span>UMR</span><strong>{patient?.umr}</strong></div>
-        <div><span>Bill Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
+        <div><span>Collection Date</span><strong>{formatDateTime(collectedAt)}</strong></div>
         <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
         <div><span>Report Date</span><strong>{formatDateTime(releasedAt)}</strong></div>
       </div>
