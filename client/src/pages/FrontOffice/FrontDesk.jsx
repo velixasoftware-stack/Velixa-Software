@@ -366,7 +366,7 @@ export default function FrontDesk() {
           <label className="fd-title-field"><span>Title</span>
             <PatientTitleSelect
               value={patientForm.title}
-              onChange={(title) => setPatientForm((f) => ({ ...f, title }))}
+              onChange={(title, gender) => setPatientForm((f) => ({ ...f, title, ...(gender ? { gender } : {}) }))}
               disabled={!!patient}
             />
           </label>

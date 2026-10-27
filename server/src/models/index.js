@@ -261,6 +261,8 @@ const PatientTitle = sequelize.define('PatientTitle', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   name: { type: DataTypes.STRING, allowNull: false, unique: true },
   sequence: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // dropdown order
+  // Gender billing selects automatically when this title is picked (null = leave it as is, e.g. "Dr.").
+  gender: { type: DataTypes.STRING },
   ...AUDIT_FIELDS,
 }, { tableName: 'patient_title' });
 

@@ -31,6 +31,7 @@ router.post('/groups', testCtrl.createTestGroup);
 // Patient titles (Mr./Mrs./...) offered in every client's billing screen
 router.get('/patient-titles', titleCtrl.listPatientTitles);
 router.post('/patient-titles', titleCtrl.createPatientTitle);
+router.put('/patient-titles/:id', titleCtrl.updatePatientTitle);
 router.delete('/patient-titles/:id', titleCtrl.deletePatientTitle);
 
 router.get('/tests', testCtrl.listTests);

@@ -370,7 +370,7 @@ export default function EditOrder() {
             <form onSubmit={handleSavePatient}>
               <div className="form-grid">
                 <label><span>Title</span>
-                  <PatientTitleSelect value={patientForm.title} onChange={(title) => setPatientForm((f) => ({ ...f, title }))} />
+                  <PatientTitleSelect value={patientForm.title} onChange={(title, gender) => setPatientForm((f) => ({ ...f, title, ...(gender ? { gender } : {}) }))} />
                 </label>
                 <label><span>Patient Name *</span>
                   <input value={patientForm.name} onChange={(e) => setPatientForm((f) => ({ ...f, name: e.target.value }))} required />

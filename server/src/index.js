@@ -124,6 +124,7 @@ async function start() {
     'DROP INDEX IF EXISTS payor_invoice_payor_id_month',
     'CREATE INDEX IF NOT EXISTS payor_invoice_payor_id_month_idx ON payor_invoice ("payorId", month)',
     'ALTER TABLE patient ADD COLUMN IF NOT EXISTS title VARCHAR(255)',
+    'ALTER TABLE patient_title ADD COLUMN IF NOT EXISTS gender VARCHAR(255)',
     'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportTopMarginMm" INTEGER',
     'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportBottomMarginMm" INTEGER',
   ].join(';\n'));
