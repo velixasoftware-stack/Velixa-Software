@@ -673,8 +673,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
    details. Hidden on screen; the continuous .report-screen-only sheet is
    hidden in print instead. */
 .report-print-pages { display: none; }
-/* Named page: only the lab report forces A4 paper - bills etc. keep the printer's default. */
-@page report { size: A4; margin: 0; }
+/* A4 paper is set by LabReport itself (a <style> it renders only while the
+   report is open), not a named page: Chrome breaks to a new sheet when the
+   page name changes, which printed an empty sheet after the report for the
+   app layout around it. */
 .report-print-page {
   /* 1mm under A4: a page exactly 297mm tall can round a fraction of a pixel
      past the printer's paper and push out an empty extra page. */
@@ -687,10 +689,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .report-measure .report-print-page { margin-bottom: 4px; }
 @media print {
   .report-screen-only, .report-measure { display: none !important; }
-  .report-print-pages { display: block; page: report; }
+  .report-print-pages { display: block; }
   .report-print-page { break-after: page; page-break-after: always; }
   .report-print-page:last-child { break-after: auto; page-break-after: auto; }
   .main-content:has(.report-print-pages) { padding: 0 !important; }
+  /* Nothing around the report may add height (e.g. the app shell's full-screen
+     min-height) - any leftover past the last page becomes an empty sheet. */
+  html:has(.report-print-pages), body:has(.report-print-pages),
+  .app-shell:has(.report-print-pages), .main-content:has(.report-print-pages) {
+    height: auto !important; min-height: 0 !important; margin: 0 !important;
+  }
 }
 .report-header-slot { min-height: 180px; display: flex; align-items: center; margin-bottom: 16px; }
 /* Lab report: a shown letterhead takes only its own height; tighter gaps

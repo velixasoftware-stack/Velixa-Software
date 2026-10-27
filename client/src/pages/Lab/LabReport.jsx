@@ -467,6 +467,10 @@ export default function LabReport() {
         <UnitRun units={units} />
       </div>
 
+      {/* The report prints on A4 - set only while this page is open, so bills
+          and other printouts keep the printer's own paper size. */}
+      <style>{'@page { size: A4; margin: 0; }'}</style>
+
       {/* Printed: real A4 pages, each starting with the same letterhead +
           patient details as page 1. */}
       <div className="report-print-pages">
