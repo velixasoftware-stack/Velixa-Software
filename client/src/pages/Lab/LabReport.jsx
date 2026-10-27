@@ -47,15 +47,17 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
       </>)}
 
       {/* "Laboratory Report" is printed above each service group's name instead (see buildUnits). */}
-      <div className="report-patient-grid lab-report-grid">
-        <div><span>UMR</span><strong>{patient?.umr}</strong></div>
+      {/* Two columns of "Label : Value" rows (left: patient, right: order) -
+          compact, so the results start higher up the page. Read row by row:
+          each pair below is one row, left then right. */}
+      <div className="lab-report-info">
         <div><span>Patient Name</span><strong>{patientLabel(patient)}</strong></div>
-        <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
         <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
-        <div><span>Mobile</span><strong>{patient?.mobile || '—'}</strong></div>
-        <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
+        <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
         <div><span>Billed To</span><strong>{report.bill.payor || 'Self / Direct'}</strong></div>
+        <div><span>UMR</span><strong>{patient?.umr}</strong></div>
         <div><span>Bill Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
+        <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
         <div><span>Report Date</span><strong>{formatDateTime(releasedAt)}</strong></div>
       </div>
     </>

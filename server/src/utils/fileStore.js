@@ -16,6 +16,9 @@ const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads');
 async function saveUpload(clientId, name, file) {
   const ext = path.extname(file.originalname) || '.png';
   const relPath = `${clientId}/${name}${ext}`;
+  // Taken before the disk write, so this server's own fresh copy is never
+  // older than the link's version stamp (see dropStaleDiskCopy).
+  const version = Date.now();
 
   await StoredFile.upsert({ path: relPath, contentType: file.mimetype || null, data: file.buffer });
   try {
@@ -26,7 +29,25 @@ async function saveUpload(clientId, name, file) {
   }
   // The file name never changes between uploads, so a version stamp makes
   // browsers fetch the new image instead of showing their cached old one.
-  return `/uploads/${relPath}?v=${Date.now()}`;
+  return `/uploads/${relPath}?v=${version}`;
+}
+
+/**
+ * Runs before the disk is checked: if the link's version stamp (?v=, the
+ * upload time) is newer than the disk copy, that copy is stale - e.g. a newer
+ * upload was made through another server sharing this database - so it's
+ * dropped and the request falls through to the database copy below.
+ */
+function dropStaleDiskCopy(req, _res, next) {
+  const version = Number(req.query.v);
+  if (!version) return next();
+  const relPath = decodeURIComponent(req.path.replace(/^\/+/, ''));
+  if (!relPath || relPath.includes('..')) return next();
+  try {
+    const diskFile = path.join(UPLOAD_ROOT, relPath);
+    if (fs.statSync(diskFile).mtimeMs < version) fs.unlinkSync(diskFile);
+  } catch { /* no disk copy - nothing to drop */ }
+  return next();
 }
 
 /** Express handler for /uploads/* requests the disk didn't have - served from the database. */
@@ -68,4 +89,4 @@ async function backfillStoredFiles() {
   }
 }
 
-module.exports = { UPLOAD_ROOT, saveUpload, serveStoredFile, backfillStoredFiles };
+module.exports = { UPLOAD_ROOT, saveUpload, dropStaleDiskCopy, serveStoredFile, backfillStoredFiles };

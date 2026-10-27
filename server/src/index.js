@@ -10,7 +10,7 @@ const routes = require('./routes');
 const { expireOverdueSubscriptions } = require('./controllers/subscription.controller');
 const { backfillSystemUsers } = require('./controllers/client.controller');
 const { seedDefaultPatientTitles } = require('./controllers/patientTitle.controller');
-const { serveStoredFile, backfillStoredFiles } = require('./utils/fileStore');
+const { dropStaleDiskCopy, serveStoredFile, backfillStoredFiles } = require('./utils/fileStore');
 
 const app = express();
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
@@ -30,7 +30,7 @@ app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
 }));
-app.use('/uploads', express.static(UPLOAD_ROOT), serveStoredFile); // disk cache first, then the database copy
+app.use('/uploads', dropStaleDiskCopy, express.static(UPLOAD_ROOT), serveStoredFile); // disk cache first, then the database copy
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api', routes);
