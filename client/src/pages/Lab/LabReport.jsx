@@ -17,6 +17,8 @@ function formatDateTime(d) {
 /** Letterhead (or its reserved blank space) + title + patient details - printed identically at the top of every page. */
 function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLetterhead }) {
   const { patient, client } = report;
+  // When the first sample on this report was collected.
+  const collectedAt = (report.tests || []).map((t) => t.collectedAt).filter(Boolean).sort()[0];
   return (
     <>
       {/* A full-page letterhead is the page's own background (see LabReport) -
@@ -46,7 +48,6 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
       </div>
       </>)}
 
-      {/* "Laboratory Report" is printed above each service group's name instead (see buildUnits). */}
       {/* Two columns of "Label : Value" rows (left: patient, right: order) -
           compact, so the results start higher up the page. Read row by row:
           each pair below is one row, left then right. */}
@@ -54,7 +55,7 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
         <div><span>Patient Name</span><strong>{patientLabel(patient)}</strong></div>
         <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
         <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
-        <div><span>Billed To</span><strong>{report.bill.payor || 'Self / Direct'}</strong></div>
+        <div><span>Collection Date</span><strong>{formatDateTime(collectedAt)}</strong></div>
         <div><span>UMR</span><strong>{patient?.umr}</strong></div>
         <div><span>Bill Date</span><strong>{formatDateTime(report.bill.createdAt)}</strong></div>
         <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
@@ -108,12 +109,11 @@ function buildUnits({ groups, trend, includeTrend }) {
 
   let testIdx = 0;
   groups.forEach((g, gi) => {
-    // "Laboratory Report" sits directly above the service group name.
+    // The service group's name heads its tests.
     units.push({
       key: `g${gi}-head`, kind: 'block', testIdx: null, keepWithNext: true, pageBreakBefore: gi > 0,
       node: (
         <div className={`report-group-head${gi > 0 ? ' report-group-break' : ''}`}>
-          <div className="report-doc-title">Laboratory Report</div>
           {g.name && <div className="report-group-title">{g.name}</div>}
         </div>
       ),
