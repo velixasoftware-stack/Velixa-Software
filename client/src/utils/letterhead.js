@@ -1,5 +1,5 @@
 // Gap left between a full-page letterhead's header/footer design and the report.
-const HEADER_GAP_MM = 4;
+const HEADER_GAP_MM = 12; // about two lines of space under the header
 const FOOTER_GAP_MM = 3;
 
 /** Used when the letterhead can't be analysed (e.g. the image can't be read). */
