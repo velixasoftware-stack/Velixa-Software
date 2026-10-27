@@ -676,7 +676,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 /* Named page: only the lab report forces A4 paper - bills etc. keep the printer's default. */
 @page report { size: A4; margin: 0; }
 .report-print-page {
-  width: 210mm; height: 297mm; padding: 4mm 12mm 7mm; /* small top margin so the letterhead starts near the top edge */ box-sizing: border-box;
+  /* 1mm under A4: a page exactly 297mm tall can round a fraction of a pixel
+     past the printer's paper and push out an empty extra page. */
+  width: 210mm; height: 296mm; padding: 4mm 12mm 7mm; /* small top margin so the letterhead starts near the top edge */ box-sizing: border-box;
   display: flex; flex-direction: column; overflow: hidden; background: #fff;
 }
 .report-print-body { flex: 1; min-height: 0; }
