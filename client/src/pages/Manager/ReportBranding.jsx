@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
-
-// Same defaults the lab report uses when these are left blank.
-const DEFAULT_TOP_MM = 45;
-const DEFAULT_BOTTOM_MM = 25;
+import { analyzeLetterhead, DEFAULT_LETTERHEAD_TOP_MM, DEFAULT_LETTERHEAD_BOTTOM_MM } from '../../utils/letterhead';
 
 export default function ReportBranding() {
   const [branding, setBranding] = useState({ logoUrl: null, letterheadUrl: null });
   const [logoFile, setLogoFile] = useState(null);
   const [letterheadFile, setLetterheadFile] = useState(null);
   const [detailsForm, setDetailsForm] = useState({ clientName: '', address: '', mobile: '', email: '', letterheadTopMm: '', letterheadBottomMm: '' });
-  const [letterheadIsPage, setLetterheadIsPage] = useState(false); // a whole A4 page vs a header strip
+  const [letterheadInfo, setLetterheadInfo] = useState(null); // { isPage, topMm, bottomMm } detected from the image
+  const letterheadIsPage = !!letterheadInfo?.isPage;
+  // What the report uses when a box is left blank: detected from the letterhead itself.
+  const autoTopMm = letterheadInfo?.topMm ?? DEFAULT_LETTERHEAD_TOP_MM;
+  const autoBottomMm = letterheadInfo?.bottomMm ?? DEFAULT_LETTERHEAD_BOTTOM_MM;
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -36,6 +37,11 @@ export default function ReportBranding() {
     ])));
   }
   useEffect(() => { load(); loadDoctors(); }, []);
+  useEffect(() => {
+    let alive = true;
+    analyzeLetterhead(branding.letterheadUrl).then((r) => { if (alive) setLetterheadInfo(r); });
+    return () => { alive = false; };
+  }, [branding.letterheadUrl]);
 
   function updateDoctorDraft(userId, field, value) {
     setDoctorDrafts((d) => ({ ...d, [userId]: { ...d[userId], [field]: value } }));
@@ -140,14 +146,15 @@ export default function ReportBranding() {
         <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 8px' }}>
           Only used for a full-page letterhead: how far from the top and bottom edge the report starts and stops, so it
           doesn&apos;t print over your letterhead&apos;s header and footer. Also kept when printing without the header
-          onto pre-printed letterhead paper. Leave blank for the default ({DEFAULT_TOP_MM} mm / {DEFAULT_BOTTOM_MM} mm).
+          onto pre-printed letterhead paper. Leave blank to fit it automatically - just below your letterhead&apos;s
+          header and just above its footer{letterheadIsPage ? ` (${autoTopMm} mm / ${autoBottomMm} mm for this letterhead)` : ''}.
         </p>
         <div className="form-grid">
           <label><span>Top space (mm)</span>
-            <input type="number" min="0" max="120" placeholder={String(DEFAULT_TOP_MM)} value={detailsForm.letterheadTopMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadTopMm: e.target.value }))} />
+            <input type="number" min="0" max="120" placeholder={`Auto (${autoTopMm})`} value={detailsForm.letterheadTopMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadTopMm: e.target.value }))} />
           </label>
           <label><span>Bottom space (mm)</span>
-            <input type="number" min="0" max="120" placeholder={String(DEFAULT_BOTTOM_MM)} value={detailsForm.letterheadBottomMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadBottomMm: e.target.value }))} />
+            <input type="number" min="0" max="120" placeholder={`Auto (${autoBottomMm})`} value={detailsForm.letterheadBottomMm} onChange={(e) => setDetailsForm((f) => ({ ...f, letterheadBottomMm: e.target.value }))} />
           </label>
         </div>
         <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
@@ -166,7 +173,6 @@ export default function ReportBranding() {
             <img
               src={branding.letterheadUrl}
               alt="Letterhead preview"
-              onLoad={(e) => setLetterheadIsPage(e.target.naturalHeight / e.target.naturalWidth >= 1)}
             />
           ) : <div style={{ width: 220, height: 120, background: '#f1f5f9', borderRadius: 8 }} />}
           <figcaption>
@@ -182,8 +188,8 @@ export default function ReportBranding() {
               <div
                 className="letterhead-a4-zone"
                 style={{
-                  top: `${((Number(detailsForm.letterheadTopMm === '' ? DEFAULT_TOP_MM : detailsForm.letterheadTopMm) || 0) / 297) * 100}%`,
-                  bottom: `${((Number(detailsForm.letterheadBottomMm === '' ? DEFAULT_BOTTOM_MM : detailsForm.letterheadBottomMm) || 0) / 297) * 100}%`,
+                  top: `${((Number(detailsForm.letterheadTopMm === '' ? autoTopMm : detailsForm.letterheadTopMm) || 0) / 297) * 100}%`,
+                  bottom: `${((Number(detailsForm.letterheadBottomMm === '' ? autoBottomMm : detailsForm.letterheadBottomMm) || 0) / 297) * 100}%`,
                 }}
               >
                 Report prints here

@@ -7,6 +7,7 @@ import { ReportRemarks } from '../../components/Remarks';
 import { doctorLabel, patientLabel } from '../../utils/format';
 import Sparkline from '../../components/Sparkline';
 import { rangeLabel } from '../../components/NormalRangeText';
+import { analyzeLetterhead, DEFAULT_LETTERHEAD_TOP_MM, DEFAULT_LETTERHEAD_BOTTOM_MM } from '../../utils/letterhead';
 
 function formatDateTime(d) {
   if (!d) return '—';
@@ -331,29 +332,21 @@ function paginate(units, h) {
   return pages.map((p) => p.units);
 }
 
-// Blank space left at the top/bottom of a full A4 letterhead for its printed
-// header/footer design, unless the lab set its own in Report Branding.
-const DEFAULT_LETTERHEAD_TOP_MM = 45;
-const DEFAULT_LETTERHEAD_BOTTOM_MM = 25;
-
 /**
- * Whether the uploaded letterhead is a whole A4 page (portrait - roughly as
- * tall as it is wide or taller) rather than a header strip. A whole-page
- * letterhead is printed as each page's background with the report on top of
- * it; a strip stays a header image above the patient details.
+ * A whole A4 page letterhead (portrait) is printed as each page's background
+ * with the report on top of it; a header strip stays a header image above the
+ * patient details. Also returns where the page letterhead's own header and
+ * footer end, so the report fits between them (see utils/letterhead.js).
  */
 function usePageLetterhead(url) {
-  const [isPage, setIsPage] = useState(false);
+  const [info, setInfo] = useState(null);
   useEffect(() => {
-    setIsPage(false);
-    if (!url) return undefined;
+    setInfo(null);
     let alive = true;
-    const img = new Image();
-    img.onload = () => { if (alive) setIsPage(img.naturalHeight / img.naturalWidth >= 1); };
-    img.src = url;
+    analyzeLetterhead(url).then((r) => { if (alive) setInfo(r); });
     return () => { alive = false; };
   }, [url]);
-  return isPage;
+  return info?.isPage ? info : null;
 }
 
 export default function LabReport() {
@@ -415,7 +408,8 @@ export default function LabReport() {
     return () => window.removeEventListener('beforeprint', onBeforePrint);
   }, [measure]);
 
-  const pageLetterhead = usePageLetterhead(report?.client?.letterheadUrl);
+  const pageLetterheadInfo = usePageLetterhead(report?.client?.letterheadUrl);
+  const pageLetterhead = !!pageLetterheadInfo;
   useLayoutEffect(() => { measure(); }, [measure, pageLetterhead]);
 
   const pages = useMemo(() => (heights ? paginate(units, heights) : [units]), [units, heights]);
@@ -427,12 +421,14 @@ export default function LabReport() {
   const releasedAt = tests.map((t) => t.releasedAt).filter(Boolean).sort().slice(-1)[0];
   // The letterhead's height is only known once its image loads - re-measure then so pages split correctly.
   const header = <ReportHeader report={report} includeHeader={includeHeader} releasedAt={releasedAt} onImageLoad={measure} pageLetterhead={pageLetterhead} />;
-  // Full-page letterhead: the report prints inside its blank middle - the
-  // same space is kept with the header unticked (pre-printed stationery).
+  // Full-page letterhead: the report prints inside its blank middle - just
+  // below its header, just above its footer (a lab's own Report Branding
+  // values win over the detected ones). The same space is kept with the
+  // header unticked, for printing onto pre-printed letterhead paper.
   const pageClass = pageLetterhead ? ' has-page-letterhead' : '';
   const pageStyle = pageLetterhead ? {
-    paddingTop: `${report.client.letterheadTopMm ?? DEFAULT_LETTERHEAD_TOP_MM}mm`,
-    paddingBottom: `${report.client.letterheadBottomMm ?? DEFAULT_LETTERHEAD_BOTTOM_MM}mm`,
+    paddingTop: `${report.client.letterheadTopMm ?? pageLetterheadInfo.topMm ?? DEFAULT_LETTERHEAD_TOP_MM}mm`,
+    paddingBottom: `${report.client.letterheadBottomMm ?? pageLetterheadInfo.bottomMm ?? DEFAULT_LETTERHEAD_BOTTOM_MM}mm`,
   } : undefined;
   // An <img>, not a CSS background - browsers skip backgrounds when printing by default.
   const pageBackground = pageLetterhead && includeHeader
