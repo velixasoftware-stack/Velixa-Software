@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
+import PatientTitleSelect from '../../components/PatientTitleSelect';
+import { patientLabel } from '../../utils/format';
 
 const PAYMENT_MODES = ['Cash', 'Card', 'UPI', 'Insurance'];
 const money = (n) => Number(n || 0).toFixed(2);
@@ -124,7 +126,7 @@ export default function EditOrder() {
   function openPatientEdit() {
     const p = bill.Patient;
     setPatientForm({
-      name: p.name || '', age: p.age ?? '', ageUnit: p.ageUnit || 'Years', gender: p.gender || 'Male',
+      title: p.title || '', name: p.name || '', age: p.age ?? '', ageUnit: p.ageUnit || 'Years', gender: p.gender || 'Male',
       mobile: p.mobile || '', email: p.email || '', address: p.address || '',
     });
     setPatientError('');
@@ -184,7 +186,7 @@ export default function EditOrder() {
           <div className="review-box-row">
             <span>Patient</span>
             <span>
-              {bill.Patient?.name} ({bill.Patient?.umr})
+              {patientLabel(bill.Patient)} ({bill.Patient?.umr})
               <button type="button" className="secondary" style={{ marginLeft: 10, padding: '2px 10px', fontSize: 12 }} onClick={openPatientEdit}>
                 Edit
               </button>
@@ -367,6 +369,9 @@ export default function EditOrder() {
             <p style={{ fontSize: 13, color: '#64748b' }}>The UMR itself can't be changed - it's this patient's permanent record number.</p>
             <form onSubmit={handleSavePatient}>
               <div className="form-grid">
+                <label><span>Title</span>
+                  <PatientTitleSelect value={patientForm.title} onChange={(title) => setPatientForm((f) => ({ ...f, title }))} />
+                </label>
                 <label><span>Patient Name *</span>
                   <input value={patientForm.name} onChange={(e) => setPatientForm((f) => ({ ...f, name: e.target.value }))} required />
                 </label>

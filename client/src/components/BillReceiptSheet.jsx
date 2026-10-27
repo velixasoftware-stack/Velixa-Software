@@ -1,5 +1,5 @@
 import { numberToWords } from '../utils/numberToWords';
-import { doctorLabel } from '../utils/format';
+import { doctorLabel, patientLabel } from '../utils/format';
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -92,7 +92,7 @@ export default function BillReceiptSheet({ bill }) {
             {bill.Client && <p className="bill-receipt-client-contact">{brandContact}</p>}
           </div>
           <div className="bill-receipt-info">
-            <div><span>Name</span><strong>{bill.Patient?.name}</strong></div>
+            <div><span>Name</span><strong>{patientLabel(bill.Patient)}</strong></div>
             <div><span>Bill No</span><strong>{bill.billNo}</strong></div>
             <div><span>Umr No</span><strong>{bill.Patient?.umr}</strong></div>
             <div><span>Reg.Date</span><strong>{formatDateTime(bill.createdAt)}</strong></div>
@@ -160,7 +160,7 @@ export default function BillReceiptSheet({ bill }) {
         <div className="bill-receipt-footer">
           {Number(receivedShown) > 0 && (
             <p className="bill-receipt-words">
-              Received with thanks from {bill.Patient?.name} a sum of ₹{receivedShown}/-
+              Received with thanks from {patientLabel(bill.Patient)} a sum of ₹{receivedShown}/-
               <br />
               <strong>{numberToWords(receivedShown).toUpperCase()} ONLY</strong>
               <br />

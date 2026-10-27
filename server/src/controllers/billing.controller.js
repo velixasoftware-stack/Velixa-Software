@@ -65,7 +65,7 @@ const billIncludes = [
 async function createBill(req, res) {
   const { clientId, id: userId } = req.user;
   const {
-    patientId, umr, name, age, ageUnit, gender, mobile, email, address,
+    patientId, umr, title, name, age, ageUnit, gender, mobile, email, address,
     testIds, packageIds, referredDoctorName, walkInDate, discount, paymentMode, visitAddress, transactionNumber, remarks, payorId,
     visitType, priority, amountCollected, gstPercent, barcodes,
   } = req.body;
@@ -85,7 +85,7 @@ async function createBill(req, res) {
     if (!patient) return res.status(404).json({ message: 'Patient not found' });
   } else {
     try {
-      patient = await findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, mobile, email, address });
+      patient = await findOrCreatePatient(clientId, { umr, title, name, age, ageUnit, gender, mobile, email, address });
     } catch (err) {
       return res.status(400).json({ message: err.message });
     }
@@ -649,7 +649,7 @@ async function listBills(req, res) {
     dueAmount: b.dueAmount,
     paymentMode: b.paymentMode,
     createdAt: b.createdAt,
-    patient: b.Patient ? { id: b.Patient.id, umr: b.Patient.umr, name: b.Patient.name, mobile: b.Patient.mobile } : null,
+    patient: b.Patient ? { id: b.Patient.id, umr: b.Patient.umr, title: b.Patient.title, name: b.Patient.name, mobile: b.Patient.mobile } : null,
     referredDoctor: b.ReferralDoctor?.name || null,
     payor: b.Payor?.name || null,
     payorId: b.payorId,

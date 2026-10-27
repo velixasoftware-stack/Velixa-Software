@@ -9,6 +9,7 @@ import ChiefAdminDashboard from './pages/ChiefAdmin/Dashboard';
 import ClientCreate from './pages/ChiefAdmin/ClientCreate';
 import ClientDetail from './pages/ChiefAdmin/ClientDetail';
 import ChiefAdminMasters from './pages/ChiefAdmin/Masters';
+import PatientTitles from './pages/ChiefAdmin/PatientTitles';
 import ChiefAdminUsers from './pages/ChiefAdmin/ChiefAdminUsers';
 import TestRemoval from './pages/ChiefAdmin/TestRemoval';
 import ChiefAdminTickets from './pages/ChiefAdmin/Tickets';
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="clients/new" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ClientCreate /></ProtectedRoute>} />
         <Route path="clients/:id" element={<ClientDetail />} />
         <Route path="masters" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminMasters /></ProtectedRoute>} />
+        <Route path="patient-titles" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><PatientTitles /></ProtectedRoute>} />
         <Route path="test-removal" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><TestRemoval /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminUsers /></ProtectedRoute>} />
         <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ChiefAdminTickets /></ProtectedRoute>} />

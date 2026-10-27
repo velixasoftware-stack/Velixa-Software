@@ -4,7 +4,7 @@ import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icons';
 import { StatusLegend, TestStatusSummary, TestStatusDetail } from '../../components/TestStatus';
-import { doctorLabel } from '../../utils/format';
+import { doctorLabel, patientLabel } from '../../utils/format';
 
 const REFUND_MODES = ['Cash', 'Card', 'UPI', 'Insurance'];
 
@@ -240,7 +240,7 @@ export default function Orders() {
                   <div className="cell-sub">{b.walkInDate}</div>
                 </td>
                 <td>
-                  <div className="cell-main">{b.patient?.name}</div>
+                  <div className="cell-main">{patientLabel(b.patient)}</div>
                   <div className="cell-sub">{b.patient?.umr}{b.patient?.mobile ? ` · ${b.patient.mobile}` : ''}</div>
                 </td>
                 <td>{doctorLabel(b.referredDoctor) || '—'}</td>

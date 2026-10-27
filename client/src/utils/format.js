@@ -22,3 +22,10 @@ export function doctorLabel(name) {
   if (!n) return '';
   return /^dr\b\.?/i.test(n) ? n : `Dr. ${n}`;
 }
+
+/** A patient's name with their title in front ("Mr. Ravi Kumar"), or just the
+ * name for patients saved without one. */
+export function patientLabel(patient) {
+  if (!patient) return '';
+  return [patient.title, patient.name].filter(Boolean).join(' ');
+}

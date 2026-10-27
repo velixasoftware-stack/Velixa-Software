@@ -4,6 +4,7 @@ const { authenticate, requireChiefAdminRole } = require('../middleware/auth.midd
 const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
 const { runWithActor, getCurrentActor } = require('../utils/auditContext');
 const testCtrl = require('../controllers/testMaster.controller');
+const titleCtrl = require('../controllers/patientTitle.controller');
 
 // 50 MB covers a few hundred thousand rows of the tests & parameters sheet.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -26,6 +27,11 @@ router.use(authenticate, requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN));
 
 router.get('/groups', testCtrl.listTestGroups);
 router.post('/groups', testCtrl.createTestGroup);
+
+// Patient titles (Mr./Mrs./...) offered in every client's billing screen
+router.get('/patient-titles', titleCtrl.listPatientTitles);
+router.post('/patient-titles', titleCtrl.createPatientTitle);
+router.delete('/patient-titles/:id', titleCtrl.deletePatientTitle);
 
 router.get('/tests', testCtrl.listTests);
 router.post('/tests', testCtrl.createTest);

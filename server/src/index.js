@@ -9,6 +9,7 @@ const { sequelize } = require('./models');
 const routes = require('./routes');
 const { expireOverdueSubscriptions } = require('./controllers/subscription.controller');
 const { backfillSystemUsers } = require('./controllers/client.controller');
+const { seedDefaultPatientTitles } = require('./controllers/patientTitle.controller');
 
 const app = express();
 const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
@@ -121,7 +122,9 @@ async function start() {
     // (payorId, month) index and keep a plain one for lookups.
     'DROP INDEX IF EXISTS payor_invoice_payor_id_month',
     'CREATE INDEX IF NOT EXISTS payor_invoice_payor_id_month_idx ON payor_invoice ("payorId", month)',
+    'ALTER TABLE patient ADD COLUMN IF NOT EXISTS title VARCHAR(255)',
   ].join(';\n'));
+  await seedDefaultPatientTitles();
   await sequelize.query("ALTER TYPE enum_report_status ADD VALUE IF NOT EXISTS 'REVOKED'");
   await backfillSystemUsers();
   await expireOverdueSubscriptions();

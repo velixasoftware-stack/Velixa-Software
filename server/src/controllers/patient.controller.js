@@ -21,7 +21,7 @@ async function generateUmr(clientId) {
  * Shared by the standalone patient-registration endpoint and by billing,
  * so a patient is only ever registered once no matter which screen is used.
  */
-async function findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, mobile, email, address }) {
+async function findOrCreatePatient(clientId, { umr, title, name, age, ageUnit, gender, mobile, email, address }) {
   if (mobile && mobile.length > 10) {
     throw new Error('Mobile number cannot be more than 10 digits');
   }
@@ -44,7 +44,7 @@ async function findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, 
   for (let attempt = 1; ; attempt += 1) {
     const newUmr = await generateUmr(clientId);
     try {
-      return await Patient.create({ clientId, umr: newUmr, name, age, ageUnit: ageUnit || 'Years', gender, mobile, email, address });
+      return await Patient.create({ clientId, umr: newUmr, title: title || null, name, age, ageUnit: ageUnit || 'Years', gender, mobile, email, address });
     } catch (err) {
       if (err?.name !== 'SequelizeUniqueConstraintError' || attempt >= 5) throw err;
     }
@@ -54,11 +54,11 @@ async function findOrCreatePatient(clientId, { umr, name, age, ageUnit, gender, 
 // POST /api/patients
 async function createPatient(req, res) {
   const { clientId } = req.user;
-  const { name, age, ageUnit, gender, mobile, email, address } = req.body;
+  const { title, name, age, ageUnit, gender, mobile, email, address } = req.body;
   if (!name) return res.status(400).json({ message: 'Patient name is required' });
 
   try {
-    const patient = await findOrCreatePatient(clientId, { name, age, ageUnit, gender, mobile, email, address });
+    const patient = await findOrCreatePatient(clientId, { title, name, age, ageUnit, gender, mobile, email, address });
     return res.status(201).json(patient);
   } catch (err) {
     return res.status(400).json({ message: err.message });
@@ -74,7 +74,7 @@ async function updatePatient(req, res) {
   const patient = await Patient.findOne({ where: { id: req.params.id, clientId } });
   if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-  const { name, age, ageUnit, gender, mobile, email, address } = req.body;
+  const { title, name, age, ageUnit, gender, mobile, email, address } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ message: 'Patient name is required' });
   if (mobile && mobile.length > 10) {
     return res.status(400).json({ message: 'Mobile number cannot be more than 10 digits' });
@@ -85,6 +85,7 @@ async function updatePatient(req, res) {
   }
 
   await patient.update({
+    title: title || null,
     name: name.trim(),
     age: age === '' || age == null ? null : Number(age),
     ageUnit: ageUnit || 'Years',

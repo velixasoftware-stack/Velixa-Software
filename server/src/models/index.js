@@ -237,6 +237,17 @@ const TestGroup = sequelize.define('TestGroup', {
   ...AUDIT_FIELDS,
 }, { tableName: 'test_group' });
 
+// Chief-Admin-managed patient titles ("Mr.", "Mrs.", "Baby" ...) - one global
+// list offered in every client's billing screen and printed before the
+// patient's name on bills and reports. Patient.title stores the chosen text
+// itself, so deleting a title here never changes an existing patient.
+const PatientTitle = sequelize.define('PatientTitle', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING, allowNull: false, unique: true },
+  sequence: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // dropdown order
+  ...AUDIT_FIELDS,
+}, { tableName: 'patient_title' });
+
 const TestMaster = sequelize.define('TestMaster', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   testCode: { type: DataTypes.STRING, unique: true, allowNull: false },
@@ -475,6 +486,7 @@ const Patient = sequelize.define('Patient', {
   // Unique Medical Record number - generated once per patient, per client,
   // and reused across every future visit/order for that same patient.
   umr: { type: DataTypes.STRING, allowNull: false },
+  title: { type: DataTypes.STRING }, // e.g. "Mr." - picked from PatientTitle
   name: { type: DataTypes.STRING, allowNull: false },
   age: { type: DataTypes.INTEGER },
   ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - lets a newborn's age be entered in days
@@ -888,6 +900,7 @@ module.exports = {
   RolePermission,
   ClientUser,
   TestGroup,
+  PatientTitle,
   TestMaster,
   ParameterMaster,
   ParameterNormalRange,

@@ -4,7 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import ShareButton from '../../components/ShareButton';
 import { ReportRemarks } from '../../components/Remarks';
-import { doctorLabel } from '../../utils/format';
+import { doctorLabel, patientLabel } from '../../utils/format';
 import Sparkline from '../../components/Sparkline';
 import { rangeLabel } from '../../components/NormalRangeText';
 
@@ -43,7 +43,7 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad }) {
       {/* "Laboratory Report" is printed above each service group's name instead (see buildUnits). */}
       <div className="report-patient-grid lab-report-grid">
         <div><span>UMR</span><strong>{patient?.umr}</strong></div>
-        <div><span>Patient Name</span><strong>{patient?.name}</strong></div>
+        <div><span>Patient Name</span><strong>{patientLabel(patient)}</strong></div>
         <div><span>Age / Gender</span><strong>{patient?.age ? `${patient.age} Yrs` : '—'} / {patient?.gender || '—'}</strong></div>
         <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
         <div><span>Mobile</span><strong>{patient?.mobile || '—'}</strong></div>

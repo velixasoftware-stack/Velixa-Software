@@ -4,13 +4,14 @@ import SearchSelect from '../../components/SearchSelect';
 import BillReceiptSheet from '../../components/BillReceiptSheet';
 import ShareButton from '../../components/ShareButton';
 import ReferralDoctorPicker from '../../components/ReferralDoctorPicker';
+import PatientTitleSelect from '../../components/PatientTitleSelect';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
 function blankPatientForm() {
-  return { name: '', age: '', ageUnit: 'Years', gender: 'Male', mobile: '', email: '', address: '' };
+  return { title: '', name: '', age: '', ageUnit: 'Years', gender: 'Male', mobile: '', email: '', address: '' };
 }
 
 function IconSearch() {
@@ -97,7 +98,7 @@ export default function FrontDesk() {
     try {
       const { data } = await api.get('/patients/lookup', { params });
       setPatient(data);
-      setPatientForm({ name: data.name, age: data.age || '', ageUnit: data.ageUnit || 'Years', gender: data.gender || 'Male', mobile: data.mobile || '', email: data.email || '', address: data.address || '' });
+      setPatientForm({ title: data.title || '', name: data.name, age: data.age || '', ageUnit: data.ageUnit || 'Years', gender: data.gender || 'Male', mobile: data.mobile || '', email: data.email || '', address: data.address || '' });
       setVisitAddress(data.address || '');
       setSearchMessage(`Existing patient found — ${data.umr}`);
     } catch (err) {
@@ -310,6 +311,7 @@ export default function FrontDesk() {
   return (
     <div className="front-desk">
       <div className="card">
+        <h3 className="step-heading">1. Patient Details <span className="step-hint">— search an existing patient or register a new one</span></h3>
         {/* Billing type, credit client (if any) and patient search share one row
             so the whole billing screen fits without scrolling. */}
         <form onSubmit={handleSearch} className="fd-top-row">
@@ -361,7 +363,14 @@ export default function FrontDesk() {
               required
             />
           </label>
-          <label><span>Patient Name *</span>
+          <label className="fd-title-field"><span>Title</span>
+            <PatientTitleSelect
+              value={patientForm.title}
+              onChange={(title) => setPatientForm((f) => ({ ...f, title }))}
+              disabled={!!patient}
+            />
+          </label>
+          <label className="fd-name-field"><span>Patient Name *</span>
             <input value={patientForm.name} onChange={(e) => setPatientForm((f) => ({ ...f, name: e.target.value }))} disabled={!!patient} required />
           </label>
           <label><span>Gender</span>
@@ -405,7 +414,7 @@ export default function FrontDesk() {
       {/* Bill items and payment side by side on wide screens (stacked on narrow ones). */}
       <div className="fd-columns">
       <div className="card">
-        <h3 className="step-heading">1. Bill Items <span className="step-hint">— add at least 1 item</span></h3>
+        <h3 className="step-heading">2. Bill Items <span className="step-hint">— add at least 1 item</span></h3>
 
         <div className="bill-items-box" ref={testBoxRef}>
           <div className="bill-items-search">
@@ -498,7 +507,7 @@ export default function FrontDesk() {
       </div>
 
       <div className="card">
-        <h3 className="step-heading">2. Payment</h3>
+        <h3 className="step-heading">3. Payment</h3>
 
         {/* Totals sit at the top of Payment, right above how it's being paid. */}
         <div className="pay-stat-row">
