@@ -1719,3 +1719,5 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .masters-detail-head button:not(.status-switch button) { padding: 4px 10px; font-size: 11.5px; height: 26px; border-radius: 6px; line-height: 1; }
 .masters-detail-head .icon-btn { width: 26px; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; }
 .masters-detail-head .status-switch button { padding: 3px 9px; font-size: 11px; height: 24px; }
+.range-age-cell { display: flex; flex-direction: column; gap: 3px; }
+.range-age-cell input { width: 70px; }

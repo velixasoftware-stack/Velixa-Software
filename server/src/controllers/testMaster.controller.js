@@ -407,6 +407,9 @@ async function addParameter(req, res) {
       if (r.ageUnit && !AGE_UNIT_OPTIONS.includes(r.ageUnit)) {
         return res.status(400).json({ message: `Invalid ageUnit "${r.ageUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
       }
+      if (r.ageMaxUnit && !AGE_UNIT_OPTIONS.includes(r.ageMaxUnit)) {
+        return res.status(400).json({ message: `Invalid Age To unit "${r.ageMaxUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
+      }
     }
   }
 
@@ -451,6 +454,7 @@ async function addParameter(req, res) {
       ageMin: r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin),
       ageMax: r.ageMax === '' || r.ageMax == null ? null : Number(r.ageMax),
       ageUnit: r.ageUnit || 'Years',
+      ageMaxUnit: r.ageMaxUnit || r.ageUnit || 'Years',
       normalRangeLow: r.normalRangeLow,
       normalRangeHigh: r.normalRangeHigh,
       rangeText: r.rangeText?.toString().trim() || null,
@@ -586,8 +590,11 @@ async function addNormalRange(req, res) {
   const rowClientId = clientId && parameter.clientId == null ? clientId : null;
   if (rowClientId) await ensureClientOverride(rowClientId, parameter);
 
-  const { gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh } = req.body;
+  const { gender, ageMin, ageMax, ageUnit, ageMaxUnit, normalRangeLow, normalRangeHigh } = req.body;
   const rangeText = req.body.rangeText?.toString().trim() || null;
+  if (ageMaxUnit && !AGE_UNIT_OPTIONS.includes(ageMaxUnit)) {
+    return res.status(400).json({ message: `Invalid Age To unit "${ageMaxUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
+  }
   if (gender && !GENDER_OPTIONS.includes(gender)) {
     return res.status(400).json({ message: `Invalid gender "${gender}" - must be one of ${GENDER_OPTIONS.join(', ')}` });
   }
@@ -601,6 +608,7 @@ async function addNormalRange(req, res) {
   const normalizedAgeMin = ageMin === '' || ageMin == null ? null : Number(ageMin);
   const normalizedAgeMax = ageMax === '' || ageMax == null ? null : Number(ageMax);
   const normalizedAgeUnit = ageUnit || 'Years';
+  const normalizedAgeMaxUnit = ageMaxUnit || normalizedAgeUnit;
 
   // Same defense-in-depth as addParameter above: a double-click/double-submit of "Add Range" would
   // otherwise create two identical rule rows, so an exact-match resubmit returns the existing one instead.
@@ -612,6 +620,7 @@ async function addNormalRange(req, res) {
       ageMin: normalizedAgeMin,
       ageMax: normalizedAgeMax,
       ageUnit: normalizedAgeUnit,
+      ageMaxUnit: normalizedAgeMaxUnit,
       normalRangeLow: normalRangeLow ?? null,
       normalRangeHigh: normalRangeHigh ?? null,
     },
@@ -625,13 +634,14 @@ async function addNormalRange(req, res) {
     ageMin: normalizedAgeMin,
     ageMax: normalizedAgeMax,
     ageUnit: normalizedAgeUnit,
+    ageMaxUnit: normalizedAgeMaxUnit,
     normalRangeLow, normalRangeHigh, rangeText,
   });
   return res.status(201).json(range);
 }
 
 // PUT /api/masters/parameters/:parameterId/ranges/:rangeId
-//   Body: any of { gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh, rangeText }
+//   Body: any of { gender, ageMin, ageMax, ageUnit, ageMaxUnit, normalRangeLow, normalRangeHigh, rangeText }
 // (also PUT .../ranges/:rangeId/text with just { rangeText }). Edits one
 // age/gender row - rangeText is what the report prints for patients it
 // matches. A clinic editing a universal parameter's row edits its own copy
@@ -652,6 +662,10 @@ async function updateNormalRange(req, res) {
   if (b.ageUnit !== undefined) {
     if (!AGE_UNIT_OPTIONS.includes(b.ageUnit)) return res.status(400).json({ message: `Invalid ageUnit "${b.ageUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
     changes.ageUnit = b.ageUnit;
+  }
+  if (b.ageMaxUnit !== undefined) {
+    if (!AGE_UNIT_OPTIONS.includes(b.ageMaxUnit)) return res.status(400).json({ message: `Invalid Age To unit "${b.ageMaxUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
+    changes.ageMaxUnit = b.ageMaxUnit;
   }
   for (const k of ['ageMin', 'ageMax']) {
     if (b[k] === undefined) continue;
@@ -739,7 +753,7 @@ async function downloadTemplate(req, res) {
       rows.push({
         TEST_CODE: t.testCode, TEST_NAME: t.testName, TEST_CATEGORY: t.category || '', SAMPLE_TYPE: t.sampleType || '',
         PARAMETER_NAME: '', UNIT: '', METHOD: '', IS_INTERPRETATION: '',
-        NORMAL_RANGE_LOW: '', NORMAL_RANGE_HIGH: '', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
+        NORMAL_RANGE_LOW: '', NORMAL_RANGE_HIGH: '', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', AGE_TO_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
       });
       continue;
     }
@@ -756,7 +770,7 @@ async function downloadTemplate(req, res) {
       } else {
         for (const r of ranges) {
           rows.push({
-            ...base, GENDER: r.gender, AGE_MIN: r.ageMin ?? '', AGE_MAX: r.ageMax ?? '', AGE_UNIT: r.ageUnit || 'Years',
+            ...base, GENDER: r.gender, AGE_MIN: r.ageMin ?? '', AGE_MAX: r.ageMax ?? '', AGE_UNIT: r.ageUnit || 'Years', AGE_TO_UNIT: r.ageMaxUnit || r.ageUnit || 'Years',
             RANGE_LOW: r.normalRangeLow || '', RANGE_HIGH: r.normalRangeHigh || '',
           });
         }
@@ -768,22 +782,22 @@ async function downloadTemplate(req, res) {
       {
         TEST_CODE: 'CBC001', TEST_NAME: 'Complete Blood Count', TEST_CATEGORY: 'Haematology', SAMPLE_TYPE: 'Blood',
         PARAMETER_NAME: 'Hemoglobin', UNIT: 'g/dL', METHOD: 'Photometry', IS_INTERPRETATION: '',
-        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
+        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', AGE_TO_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
       },
       {
         TEST_CODE: 'CBC001', TEST_NAME: 'Complete Blood Count', TEST_CATEGORY: 'Haematology', SAMPLE_TYPE: 'Blood',
         PARAMETER_NAME: 'Hemoglobin', UNIT: 'g/dL', METHOD: 'Photometry', IS_INTERPRETATION: '',
-        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: 'Male', AGE_MIN: '18', AGE_MAX: '60', AGE_UNIT: 'Years', RANGE_LOW: '13', RANGE_HIGH: '17',
+        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: 'Male', AGE_MIN: '18', AGE_MAX: '60', AGE_UNIT: 'Years', AGE_TO_UNIT: 'Years', RANGE_LOW: '13', RANGE_HIGH: '17',
       },
       {
         TEST_CODE: 'CBC001', TEST_NAME: 'Complete Blood Count', TEST_CATEGORY: 'Haematology', SAMPLE_TYPE: 'Blood',
         PARAMETER_NAME: 'Hemoglobin', UNIT: 'g/dL', METHOD: 'Photometry', IS_INTERPRETATION: '',
-        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: 'Female', AGE_MIN: '18', AGE_MAX: '60', AGE_UNIT: 'Years', RANGE_LOW: '12', RANGE_HIGH: '15',
+        NORMAL_RANGE_LOW: '13', NORMAL_RANGE_HIGH: '17', GENDER: 'Female', AGE_MIN: '18', AGE_MAX: '60', AGE_UNIT: 'Years', AGE_TO_UNIT: 'Years', RANGE_LOW: '12', RANGE_HIGH: '15',
       },
       {
         TEST_CODE: 'WIDAL001', TEST_NAME: 'Widal Test', TEST_CATEGORY: 'Serology', SAMPLE_TYPE: 'Blood',
         PARAMETER_NAME: 'Interpretation', UNIT: '', METHOD: 'Slide Agglutination', IS_INTERPRETATION: 'Y',
-        NORMAL_RANGE_LOW: '', NORMAL_RANGE_HIGH: '', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
+        NORMAL_RANGE_LOW: '', NORMAL_RANGE_HIGH: '', GENDER: '', AGE_MIN: '', AGE_MAX: '', AGE_UNIT: '', AGE_TO_UNIT: '', RANGE_LOW: '', RANGE_HIGH: '',
       },
     );
   }
@@ -840,6 +854,7 @@ function parseUploadRows(buffer) {
       ageMin: String(r.AGE_MIN ?? '').trim(),
       ageMax: String(r.AGE_MAX ?? '').trim(),
       ageUnit: String(r.AGE_UNIT || '').trim(),
+      ageMaxUnit: String(r.AGE_TO_UNIT || '').trim(), // optional - blank = same as AGE_UNIT
       rangeLow: String(r.RANGE_LOW || '').trim(),
       rangeHigh: String(r.RANGE_HIGH || '').trim(),
     };
@@ -851,6 +866,7 @@ function parseUploadRows(buffer) {
     if (hasRangeRule && !row.parameterName) errors.push('PARAMETER_NAME is required to add an age/gender range');
     if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')}`);
     if (row.ageUnit && !AGE_UNIT_OPTIONS.includes(row.ageUnit)) errors.push(`AGE_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
+    if (row.ageMaxUnit && !AGE_UNIT_OPTIONS.includes(row.ageMaxUnit)) errors.push(`AGE_TO_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
     if (row.ageMin && !/^\d+$/.test(row.ageMin)) errors.push('AGE_MIN must be a whole number');
     if (row.ageMax && !/^\d+$/.test(row.ageMax)) errors.push('AGE_MAX must be a whole number');
 
@@ -871,8 +887,9 @@ async function loadUniversalParams(testIds, attributes, transaction) {
  * Parses an uploaded Excel/CSV and validates each row, without writing
  * anything yet. Columns: TEST_CODE, TEST_NAME, TEST_CATEGORY, SAMPLE_TYPE,
  * PARAMETER_NAME, UNIT, METHOD, IS_INTERPRETATION, NORMAL_RANGE_LOW,
- * NORMAL_RANGE_HIGH, GENDER, AGE_MIN, AGE_MAX, AGE_UNIT, RANGE_LOW,
- * RANGE_HIGH. IS_INTERPRETATION ("Y" or blank) marks a qualitative
+ * NORMAL_RANGE_HIGH, GENDER, AGE_MIN, AGE_MAX, AGE_UNIT, AGE_TO_UNIT, RANGE_LOW,
+ * RANGE_HIGH. AGE_UNIT is AGE_MIN's unit; AGE_TO_UNIT (optional) is AGE_MAX's,
+ * blank = same as AGE_UNIT. IS_INTERPRETATION ("Y" or blank) marks a qualitative
  * free-text parameter (e.g. a Widal conclusion) - its NORMAL_RANGE/RANGE_*
  * columns are ignored even if filled in. TEST_CATEGORY/SAMPLE_TYPE
  * only take effect the first time a TEST_CODE is created - they're test-level,
@@ -1036,25 +1053,26 @@ async function commitRows(rows) {
     for (const ids of chunk(rangeParamIds, DB_BATCH)) {
       const existing = await ParameterNormalRange.findAll({
         where: { parameterId: ids, clientId: null }, // shared rows only - not clinics' copies
-        attributes: ['parameterId', 'gender', 'ageMin', 'ageMax', 'ageUnit', 'normalRangeLow', 'normalRangeHigh'],
+        attributes: ['parameterId', 'gender', 'ageMin', 'ageMax', 'ageUnit', 'ageMaxUnit', 'normalRangeLow', 'normalRangeHigh'],
         transaction,
       });
       for (const e of existing) {
-        seenRanges.add(rangeKey(e.parameterId, e.gender, e.ageMin, e.ageMax, e.ageUnit, e.normalRangeLow, e.normalRangeHigh));
+        seenRanges.add(rangeKey(e.parameterId, e.gender, e.ageMin, e.ageMax, `${e.ageUnit}/${e.ageMaxUnit || e.ageUnit}`, e.normalRangeLow, e.normalRangeHigh));
       }
     }
     const newRanges = [];
     for (const { r, parameter } of rangeRows) {
       const gender = String(r.gender || '').trim() || 'Any';
       const ageUnit = String(r.ageUnit || '').trim() || 'Years';
+      const ageMaxUnit = String(r.ageMaxUnit || '').trim() || ageUnit;
       const ageMin = r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin);
       const ageMax = r.ageMax === '' || r.ageMax == null ? null : Number(r.ageMax);
       const normalRangeLow = r.rangeLow || null;
       const normalRangeHigh = r.rangeHigh || null;
-      const k = rangeKey(parameter.id, gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh);
+      const k = rangeKey(parameter.id, gender, ageMin, ageMax, `${ageUnit}/${ageMaxUnit}`, normalRangeLow, normalRangeHigh);
       if (seenRanges.has(k)) { results.skipped += 1; continue; }
       seenRanges.add(k);
-      newRanges.push({ parameterId: parameter.id, gender, ageMin, ageMax, ageUnit, normalRangeLow, normalRangeHigh });
+      newRanges.push({ parameterId: parameter.id, gender, ageMin, ageMax, ageUnit, ageMaxUnit, normalRangeLow, normalRangeHigh });
     }
     for (const part of chunk(newRanges, DB_BATCH)) {
       await ParameterNormalRange.bulkCreate(part, { transaction });

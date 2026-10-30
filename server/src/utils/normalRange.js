@@ -31,7 +31,7 @@ function resolveNormalRange(parameter, age, gender, ageUnit) {
 
   const ageMatches = (rule) => {
     const minDays = toDays(rule.ageMin, rule.ageUnit || 'Years');
-    const maxDays = toDays(rule.ageMax, rule.ageUnit || 'Years');
+    const maxDays = toDays(rule.ageMax, rule.ageMaxUnit || rule.ageUnit || 'Years'); // "To" may have its own unit
     if (minDays != null && (ageInDays == null || ageInDays < minDays)) return false;
     if (maxDays != null && (ageInDays == null || ageInDays > maxDays)) return false;
     return true;

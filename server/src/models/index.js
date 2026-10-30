@@ -338,7 +338,9 @@ const ParameterNormalRange = sequelize.define('ParameterNormalRange', {
   gender: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Any' }, // Male | Female | Other | Any
   ageMin: { type: DataTypes.INTEGER }, // null = no lower bound
   ageMax: { type: DataTypes.INTEGER }, // null = no upper bound
-  ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - the unit ageMin/ageMax are expressed in (e.g. a "0-7 days" newborn band)
+  ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - the unit ageMin (and ageMax, unless ageMaxUnit is set) is in (e.g. a "0-7 days" newborn band)
+  // The unit ageMax is in, when it differs from ageMin's - e.g. "15 Days to 1 Years". Null = same as ageUnit.
+  ageMaxUnit: { type: DataTypes.STRING },
   normalRangeLow: { type: DataTypes.STRING },
   normalRangeHigh: { type: DataTypes.STRING },
   // What the report prints as the Normal Range for a patient this row matches

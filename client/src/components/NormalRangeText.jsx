@@ -22,7 +22,10 @@ function pair(low, high) {
 const blank = (v) => v === '' || v == null;
 function ageBand(r) {
   if (blank(r.ageMin) && blank(r.ageMax)) return '';
-  return `${blank(r.ageMin) ? 0 : r.ageMin}-${blank(r.ageMax) ? '∞' : r.ageMax} ${r.ageUnit || 'Years'}`;
+  const from = r.ageUnit || 'Years';
+  const to = r.ageMaxUnit || from;
+  if (to === from) return `${blank(r.ageMin) ? 0 : r.ageMin}-${blank(r.ageMax) ? '∞' : r.ageMax} ${from}`;
+  return `${blank(r.ageMin) ? 0 : r.ageMin} ${from} - ${blank(r.ageMax) ? '∞' : r.ageMax} ${to}`;
 }
 
 function rowLines(rows, keep, withGender = false) {
@@ -192,6 +195,7 @@ export function RangeTextField({ value, onChange, placeholder, autoFocus }) {
 export function RangeRow({ row, genders, ageUnits, onSave, onDelete }) {
   const toDraft = () => ({
     gender: row.gender || 'Any', ageMin: row.ageMin ?? '', ageMax: row.ageMax ?? '', ageUnit: row.ageUnit || 'Years',
+    ageMaxUnit: row.ageMaxUnit || row.ageUnit || 'Years',
     normalRangeLow: row.normalRangeLow ?? '', normalRangeHigh: row.normalRangeHigh ?? '', rangeText: row.rangeText || '',
   });
   const [draft, setDraft] = useState(null); // null = not editing
@@ -213,9 +217,8 @@ export function RangeRow({ row, genders, ageUnits, onSave, onDelete }) {
     return (
       <tr>
         <td>{row.gender}</td>
-        <td>{row.ageMin ?? '—'}</td>
-        <td>{row.ageMax ?? '—'}</td>
-        <td>{row.ageUnit || 'Years'}</td>
+        <td>{row.ageMin != null ? `${row.ageMin} ${row.ageUnit || 'Years'}` : '—'}</td>
+        <td>{row.ageMax != null ? `${row.ageMax} ${row.ageMaxUnit || row.ageUnit || 'Years'}` : '—'}</td>
         <td>{range || '—'}</td>
         <td style={{ whiteSpace: 'pre-wrap' }}>
           {row.rangeText ? row.rangeText : <span style={{ color: '#94a3b8' }}>{range || '—'}</span>}
@@ -233,9 +236,18 @@ export function RangeRow({ row, genders, ageUnits, onSave, onDelete }) {
   return (
     <tr className="range-row-editing">
       <td><select value={draft.gender} onChange={set('gender')}>{genders.map((g) => <option key={g}>{g}</option>)}</select></td>
-      <td><input type="number" min="0" value={draft.ageMin} onChange={set('ageMin')} style={{ width: 64 }} /></td>
-      <td><input type="number" min="0" value={draft.ageMax} onChange={set('ageMax')} style={{ width: 64 }} /></td>
-      <td><select value={draft.ageUnit} onChange={set('ageUnit')}>{ageUnits.map((u) => <option key={u}>{u}</option>)}</select></td>
+      <td>
+        <div className="range-age-cell">
+          <input type="number" min="0" value={draft.ageMin} onChange={set('ageMin')} />
+          <select value={draft.ageUnit} onChange={set('ageUnit')}>{ageUnits.map((u) => <option key={u}>{u}</option>)}</select>
+        </div>
+      </td>
+      <td>
+        <div className="range-age-cell">
+          <input type="number" min="0" value={draft.ageMax} onChange={set('ageMax')} />
+          <select value={draft.ageMaxUnit} onChange={set('ageMaxUnit')}>{ageUnits.map((u) => <option key={u}>{u}</option>)}</select>
+        </div>
+      </td>
       <td>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <input value={draft.normalRangeLow} onChange={set('normalRangeLow')} placeholder="Low" style={{ width: 54 }} />

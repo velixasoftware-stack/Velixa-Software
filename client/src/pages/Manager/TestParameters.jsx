@@ -11,7 +11,7 @@ import { downloadFile } from '../../utils/download';
 const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
-const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
+const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
 // A range row counts once it has a range or its own printed text (e.g. "Negative").
 const rowFilled = (r) => !!(r.normalRangeLow || r.normalRangeHigh || r.rangeText?.trim());
 const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeLow: '', normalRangeHigh: '', ...blankRangeTexts(), description: '' });
@@ -38,7 +38,7 @@ function RangeMatrix({ param }) {
     <div style={{ display: 'flex', flexWrap: 'wrap' }}>
       {ranges.map((r) => (
         <span key={r.id} className={pillClass(r.gender)}>
-          {r.gender} · {r.ageMin ?? '0'}-{r.ageMax ?? '∞'}{AGE_UNIT_ABBR[r.ageUnit] || 'y'} · {r.normalRangeLow || '—'}-{r.normalRangeHigh || '—'} {param.unit || ''}
+          {r.gender} · {r.ageMin ?? '0'}{AGE_UNIT_ABBR[r.ageUnit] || 'y'}-{r.ageMax ?? '∞'}{AGE_UNIT_ABBR[r.ageMaxUnit || r.ageUnit] || 'y'} · {r.normalRangeLow || '—'}-{r.normalRangeHigh || '—'} {param.unit || ''}
         </span>
       ))}
     </div>
@@ -551,11 +551,16 @@ It will no longer appear on result entry. Reports already released keep their va
                       <label><span>Age From</span>
                         <input type="number" min="0" value={r.ageMin} onChange={(e) => updateRangeRow(idx, 'ageMin', e.target.value)} />
                       </label>
+                      <label><span>From Unit</span>
+                        <select value={r.ageUnit} onChange={(e) => updateRangeRow(idx, 'ageUnit', e.target.value)}>
+                          {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
+                        </select>
+                      </label>
                       <label><span>Age To</span>
                         <input type="number" min="0" value={r.ageMax} onChange={(e) => updateRangeRow(idx, 'ageMax', e.target.value)} />
                       </label>
-                      <label><span>Age Unit</span>
-                        <select value={r.ageUnit} onChange={(e) => updateRangeRow(idx, 'ageUnit', e.target.value)}>
+                      <label><span>To Unit</span>
+                        <select value={r.ageMaxUnit} onChange={(e) => updateRangeRow(idx, 'ageMaxUnit', e.target.value)}>
                           {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
                         </select>
                       </label>
@@ -612,7 +617,7 @@ It will no longer appear on result entry. Reports already released keep their va
               </div>
             )}
             <table>
-              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
+              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
               <tbody>
                 {(manageParam.ParameterNormalRanges || []).map((r) => (
                   <RangeRow
@@ -624,7 +629,7 @@ It will no longer appear on result entry. Reports already released keep their va
                     onDelete={() => handleDeleteRange(r.id)}
                   />
                 ))}
-                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={7}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
+                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={6}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
               </tbody>
             </table>
 
@@ -637,11 +642,16 @@ It will no longer appear on result entry. Reports already released keep their va
               <label><span>Age From</span>
                 <input type="number" min="0" value={newRange.ageMin} onChange={(e) => setNewRange((f) => ({ ...f, ageMin: e.target.value }))} />
               </label>
+              <label><span>From Unit</span>
+                <select value={newRange.ageUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageUnit: e.target.value }))}>
+                  {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </label>
               <label><span>Age To</span>
                 <input type="number" min="0" value={newRange.ageMax} onChange={(e) => setNewRange((f) => ({ ...f, ageMax: e.target.value }))} />
               </label>
-              <label><span>Age Unit</span>
-                <select value={newRange.ageUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageUnit: e.target.value }))}>
+              <label><span>To Unit</span>
+                <select value={newRange.ageMaxUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageMaxUnit: e.target.value }))}>
                   {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
                 </select>
               </label>

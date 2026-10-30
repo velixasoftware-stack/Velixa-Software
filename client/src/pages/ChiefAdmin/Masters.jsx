@@ -12,7 +12,7 @@ import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
-const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
+const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
 // A range row counts once it has a range or its own printed text (e.g. "Negative").
 const rowFilled = (r) => !!(r.normalRangeLow || r.normalRangeHigh || r.rangeText?.trim());
 const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', testType: '', interpretation: '' });
@@ -40,7 +40,7 @@ function RangeMatrix({ param }) {
     <div style={{ display: 'flex', flexWrap: 'wrap' }}>
       {ranges.map((r) => (
         <span key={r.id} className={pillClass(r.gender)}>
-          {r.gender} · {r.ageMin ?? '0'}-{r.ageMax ?? '∞'}{AGE_UNIT_ABBR[r.ageUnit] || 'y'} · {r.normalRangeLow || '—'}-{r.normalRangeHigh || '—'} {param.unit || ''}
+          {r.gender} · {r.ageMin ?? '0'}{AGE_UNIT_ABBR[r.ageUnit] || 'y'}-{r.ageMax ?? '∞'}{AGE_UNIT_ABBR[r.ageMaxUnit || r.ageUnit] || 'y'} · {r.normalRangeLow || '—'}-{r.normalRangeHigh || '—'} {param.unit || ''}
         </span>
       ))}
     </div>
@@ -732,11 +732,16 @@ This cannot be undone.`)) return;
                       <label><span>Age From</span>
                         <input type="number" min="0" value={r.ageMin} onChange={(e) => updateRangeRow(idx, 'ageMin', e.target.value)} />
                       </label>
+                      <label><span>From Unit</span>
+                        <select value={r.ageUnit} onChange={(e) => updateRangeRow(idx, 'ageUnit', e.target.value)}>
+                          {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
+                        </select>
+                      </label>
                       <label><span>Age To</span>
                         <input type="number" min="0" value={r.ageMax} onChange={(e) => updateRangeRow(idx, 'ageMax', e.target.value)} />
                       </label>
-                      <label><span>Age Unit</span>
-                        <select value={r.ageUnit} onChange={(e) => updateRangeRow(idx, 'ageUnit', e.target.value)}>
+                      <label><span>To Unit</span>
+                        <select value={r.ageMaxUnit} onChange={(e) => updateRangeRow(idx, 'ageMaxUnit', e.target.value)}>
                           {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
                         </select>
                       </label>
@@ -779,7 +784,7 @@ This cannot be undone.`)) return;
               Default range: {manageParam.normalRangeLow || '—'} - {manageParam.normalRangeHigh || '—'} (used when no rule below matches).
             </p>
             <table>
-              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Unit</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
+              <thead><tr><th>Gender</th><th>Age From</th><th>Age To</th><th>Range</th><th>Printed on Report</th><th></th></tr></thead>
               <tbody>
                 {(manageParam.ParameterNormalRanges || []).map((r) => (
                   <RangeRow
@@ -791,7 +796,7 @@ This cannot be undone.`)) return;
                     onDelete={() => handleDeleteRange(r.id)}
                   />
                 ))}
-                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={7}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
+                {(manageParam.ParameterNormalRanges || []).length === 0 && <tr><td colSpan={6}>No age/gender rules yet — the default range applies to everyone.</td></tr>}
               </tbody>
             </table>
 
@@ -804,11 +809,16 @@ This cannot be undone.`)) return;
               <label><span>Age From</span>
                 <input type="number" min="0" value={newRange.ageMin} onChange={(e) => setNewRange((f) => ({ ...f, ageMin: e.target.value }))} />
               </label>
+              <label><span>From Unit</span>
+                <select value={newRange.ageUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageUnit: e.target.value }))}>
+                  {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </label>
               <label><span>Age To</span>
                 <input type="number" min="0" value={newRange.ageMax} onChange={(e) => setNewRange((f) => ({ ...f, ageMax: e.target.value }))} />
               </label>
-              <label><span>Age Unit</span>
-                <select value={newRange.ageUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageUnit: e.target.value }))}>
+              <label><span>To Unit</span>
+                <select value={newRange.ageMaxUnit} onChange={(e) => setNewRange((f) => ({ ...f, ageMaxUnit: e.target.value }))}>
                   {AGE_UNIT_OPTIONS.map((u) => <option key={u}>{u}</option>)}
                 </select>
               </label>
@@ -836,7 +846,8 @@ This cannot be undone.`)) return;
         <h3>Bulk Upload — Tests &amp; Parameters</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
           Columns: TEST_CODE, TEST_NAME, TEST_CATEGORY, SAMPLE_TYPE, PARAMETER_NAME, UNIT, METHOD, IS_INTERPRETATION,
-          NORMAL_RANGE_LOW, NORMAL_RANGE_HIGH, GENDER, AGE_MIN, AGE_MAX, AGE_UNIT, RANGE_LOW, RANGE_HIGH. One row per
+          NORMAL_RANGE_LOW, NORMAL_RANGE_HIGH, GENDER, AGE_MIN, AGE_MAX, AGE_UNIT, AGE_TO_UNIT, RANGE_LOW, RANGE_HIGH
+          (AGE_UNIT is the unit of AGE_MIN; AGE_TO_UNIT of AGE_MAX - leave it blank when it's the same). One row per
           parameter (or per age/gender-specific range rule, if RANGE_LOW/RANGE_HIGH are filled in — repeat the same
           TEST_CODE/PARAMETER_NAME on extra rows to add several rules, e.g. Male 18-60 and Female 18-60).
           Leave PARAMETER_NAME blank to just create the test. Set IS_INTERPRETATION to "Y" for a qualitative,
@@ -868,7 +879,7 @@ This cannot be undone.`)) return;
                     <td>{r.row}</td><td>{r.testCode}</td><td>{r.testName}</td><td>{r.parameterName || '—'}</td>
                     <td>{r.unit || '—'}</td><td>{r.method || '—'}</td>
                     <td>{r.normalRangeLow || r.normalRangeHigh ? `${r.normalRangeLow}-${r.normalRangeHigh}` : '—'}</td>
-                    <td>{r.rangeLow || r.rangeHigh ? `${r.gender || 'Any'} ${r.ageMin || '0'}-${r.ageMax || '∞'} ${r.ageUnit || 'Years'}: ${r.rangeLow}-${r.rangeHigh}` : '—'}</td>
+                    <td>{r.rangeLow || r.rangeHigh ? `${r.gender || 'Any'} ${r.ageMin || '0'} ${r.ageUnit || 'Years'} - ${r.ageMax || '∞'} ${r.ageMaxUnit || r.ageUnit || 'Years'}: ${r.rangeLow}-${r.rangeHigh}` : '—'}</td>
                     <td>{r.action}</td>
                     <td>{r.valid ? <span className="badge PAID">Valid</span> : <span className="badge EXPIRED">{r.errors.join('; ')}</span>}</td>
                   </tr>
