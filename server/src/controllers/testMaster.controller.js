@@ -1086,7 +1086,8 @@ async function commitRows(rows) {
 // POST /api/admin/masters/tests/upload/commit - either the same Excel/CSV file
 // as the preview (multipart "file"; only its valid rows are written), or
 // JSON { rows: [{ testCode, testName, parameterName, unit, method,
-// normalRangeLow, normalRangeHigh, gender, ageMin, ageMax, ageUnit, rangeLow, rangeHigh }] }.
+// normalRangeLow, normalRangeHigh, gender, ageMin, ageMax, ageUnit, ageMaxUnit, rangeLow, rangeHigh }] }
+// (ageUnit = Age From's unit, ageMaxUnit = Age To's; blank = same as ageUnit).
 async function commitUpload(req, res) {
   let rows;
   if (req.file) {
