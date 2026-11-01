@@ -41,7 +41,8 @@ function resolveNormalRange(parameter, age, gender, ageUnit) {
   const genderMatch = normalizedGender
     ? candidates.find((r) => normalizeGender(r.gender) === normalizedGender)
     : null;
-  const anyMatch = candidates.find((r) => normalizeGender(r.gender || 'any') === 'any');
+  // A row for everyone - "All" (older rows: "Any").
+  const anyMatch = candidates.find((r) => ['all', 'any'].includes(normalizeGender(r.gender || 'all')));
   const chosen = genderMatch || anyMatch;
 
   if (chosen) {

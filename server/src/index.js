@@ -127,6 +127,9 @@ async function start() {
     'ALTER TABLE patient_title ADD COLUMN IF NOT EXISTS gender VARCHAR(255)',
     'ALTER TABLE parameter_normal_range ADD COLUMN IF NOT EXISTS "rangeText" TEXT',
     'ALTER TABLE parameter_normal_range ADD COLUMN IF NOT EXISTS "ageMaxUnit" VARCHAR(255)',
+    // A range row for everyone was called "Any"; it's "All" now.
+    'UPDATE parameter_normal_range SET gender = \'All\' WHERE gender = \'Any\'',
+    'ALTER TABLE parameter_normal_range ALTER COLUMN gender SET DEFAULT \'All\'',
     'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportTopMarginMm" INTEGER',
     'ALTER TABLE client ADD COLUMN IF NOT EXISTS "reportBottomMarginMm" INTEGER',
   ].join(';\n'));

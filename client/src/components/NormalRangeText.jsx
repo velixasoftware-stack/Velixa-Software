@@ -3,7 +3,7 @@
 // box (falling back to Common when that box is empty); anyone else gets
 // Common. Each box fills itself from the ranges entered - Male from the Male
 // age/gender rows, Female from the Female rows, Common from the default
-// Range Low/High and the "Any" rows - one line per age band. Once a box is
+// Range Low/High and the "All" rows - one line per age band. Once a box is
 // edited by hand it stops auto-filling (clearing it turns auto-fill back
 // on). Any box can also be typed on its own, e.g. "Negative".
 import { useEffect, useState } from 'react';
@@ -34,7 +34,7 @@ function rowLines(rows, keep, withGender = false) {
     .map((r) => {
       const range = pair(r.normalRangeLow, r.normalRangeHigh);
       if (!range) return null;
-      const who = [withGender && r.gender && r.gender !== 'Any' ? r.gender : '', ageBand(r)].filter(Boolean).join(' ');
+      const who = [withGender && r.gender && !['All', 'Any'].includes(r.gender) ? r.gender : '', ageBand(r)].filter(Boolean).join(' ');
       return who ? `${who}: ${range}` : range;
     })
     .filter(Boolean);
@@ -42,7 +42,7 @@ function rowLines(rows, keep, withGender = false) {
 
 /** { common, male, female } texts from the default low/high and the range rows. */
 export function autoRangeTexts(low, high, rows = []) {
-  const g = (r) => (r.gender || 'Any');
+  const g = (r) => (r.gender || 'All');
   const male = rowLines(rows, (r) => g(r) === 'Male').join('\n');
   const female = rowLines(rows, (r) => g(r) === 'Female').join('\n');
   const others = rowLines(rows, (r) => g(r) !== 'Male' && g(r) !== 'Female', true);
@@ -194,7 +194,7 @@ export function RangeTextField({ value, onChange, placeholder, autoFocus }) {
  */
 export function RangeRow({ row, genders, ageUnits, onSave, onDelete }) {
   const toDraft = () => ({
-    gender: row.gender || 'Any', ageMin: row.ageMin ?? '', ageMax: row.ageMax ?? '', ageUnit: row.ageUnit || 'Years',
+    gender: row.gender === 'Any' ? 'All' : (row.gender || 'All'), ageMin: row.ageMin ?? '', ageMax: row.ageMax ?? '', ageUnit: row.ageUnit || 'Years',
     ageMaxUnit: row.ageMaxUnit || row.ageUnit || 'Years',
     normalRangeLow: row.normalRangeLow ?? '', normalRangeHigh: row.normalRangeHigh ?? '', rangeText: row.rangeText || '',
   });

@@ -9,7 +9,12 @@ const { normalizeTestType } = require('../utils/testType');
 const { isBillableForClient } = require('../utils/testStatus');
 const { applyClientRanges, ensureClientOverride, resetClientRanges, TEXT_KEYS } = require('../utils/clientRanges');
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Any'];
+const GENDER_OPTIONS = ['All', 'Male', 'Female', 'Other'];
+// A range row's gender: "All" (everyone) when blank; the older name "Any" is still accepted.
+const rangeGender = (g) => {
+  const v = String(g ?? '').trim();
+  return !v || /^(any|all)$/i.test(v) ? 'All' : v;
+};
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 
 // Chief Admin adds to the shared/universal catalog (clientId null, seen by
@@ -401,6 +406,7 @@ async function addParameter(req, res) {
   if (normalRanges !== undefined) {
     if (!Array.isArray(normalRanges)) return res.status(400).json({ message: 'normalRanges must be an array' });
     for (const r of normalRanges) {
+      r.gender = rangeGender(r.gender);
       if (r.gender && !GENDER_OPTIONS.includes(r.gender)) {
         return res.status(400).json({ message: `Invalid gender "${r.gender}" - must be one of ${GENDER_OPTIONS.join(', ')}` });
       }
@@ -450,7 +456,7 @@ async function addParameter(req, res) {
   for (const r of normalRanges || []) {
     await ParameterNormalRange.create({
       parameterId: parameter.id,
-      gender: r.gender || 'Any',
+      gender: rangeGender(r.gender),
       ageMin: r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin),
       ageMax: r.ageMax === '' || r.ageMax == null ? null : Number(r.ageMax),
       ageUnit: r.ageUnit || 'Years',
@@ -590,7 +596,8 @@ async function addNormalRange(req, res) {
   const rowClientId = clientId && parameter.clientId == null ? clientId : null;
   if (rowClientId) await ensureClientOverride(rowClientId, parameter);
 
-  const { gender, ageMin, ageMax, ageUnit, ageMaxUnit, normalRangeLow, normalRangeHigh } = req.body;
+  const { ageMin, ageMax, ageUnit, ageMaxUnit, normalRangeLow, normalRangeHigh } = req.body;
+  const gender = rangeGender(req.body.gender);
   const rangeText = req.body.rangeText?.toString().trim() || null;
   if (ageMaxUnit && !AGE_UNIT_OPTIONS.includes(ageMaxUnit)) {
     return res.status(400).json({ message: `Invalid Age To unit "${ageMaxUnit}" - must be one of ${AGE_UNIT_OPTIONS.join(', ')}` });
@@ -616,7 +623,7 @@ async function addNormalRange(req, res) {
     where: {
       parameterId: parameter.id,
       clientId: rowClientId,
-      gender: gender || 'Any',
+      gender,
       ageMin: normalizedAgeMin,
       ageMax: normalizedAgeMax,
       ageUnit: normalizedAgeUnit,
@@ -630,7 +637,7 @@ async function addNormalRange(req, res) {
   const range = await ParameterNormalRange.create({
     parameterId: parameter.id,
     clientId: rowClientId,
-    gender: gender || 'Any',
+    gender,
     ageMin: normalizedAgeMin,
     ageMax: normalizedAgeMax,
     ageUnit: normalizedAgeUnit,
@@ -656,6 +663,7 @@ async function updateNormalRange(req, res) {
   const b = req.body;
   const changes = {};
   if (b.gender !== undefined) {
+    b.gender = rangeGender(b.gender);
     if (!GENDER_OPTIONS.includes(b.gender)) return res.status(400).json({ message: `Invalid gender "${b.gender}" - must be one of ${GENDER_OPTIONS.join(', ')}` });
     changes.gender = b.gender;
   }
@@ -830,7 +838,7 @@ function chunk(list, size) {
 // "yrs", any case. Map the common spellings to the stored values; anything
 // unrecognised is returned as typed so the row check still flags it.
 const GENDER_ALIASES = {
-  any: 'Any', all: 'Any', both: 'Any', a: 'Any', everyone: 'Any', common: 'Any',
+  any: 'All', all: 'All', both: 'All', a: 'All', everyone: 'All', common: 'All',
   male: 'Male', m: 'Male', female: 'Female', f: 'Female', other: 'Other', o: 'Other',
 };
 const AGE_UNIT_ALIASES = {
@@ -885,7 +893,7 @@ function parseUploadRows(buffer) {
     if (!row.testCode) errors.push('TEST_CODE is missing');
     if (!row.testName) errors.push('TEST_NAME is missing');
     if (hasRangeRule && !row.parameterName) errors.push('PARAMETER_NAME is required to add an age/gender range');
-    if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')} (ALL = Any)`);
+    if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')}`);
     if (row.ageUnit && !AGE_UNIT_OPTIONS.includes(row.ageUnit)) errors.push(`AGE_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
     if (row.ageMaxUnit && !AGE_UNIT_OPTIONS.includes(row.ageMaxUnit)) errors.push(`AGE_TO_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
     if (row.ageMin && !/^\d+$/.test(row.ageMin)) errors.push('AGE_MIN must be a whole number');
@@ -956,7 +964,7 @@ async function previewUpload(req, res) {
 
     let action;
     if (hasRangeRule) {
-      action = `Add ${r.gender || 'Any'} range rule${paramAlreadyExists ? '' : ' (+ new parameter)'}`;
+      action = `Add ${r.gender || 'All'} range rule${paramAlreadyExists ? '' : ' (+ new parameter)'}`;
     } else if (parameterName) {
       action = paramAlreadyExists ? 'Parameter already exists — skipped' : (isNewTest ? 'New test + parameter' : 'Add parameter');
     } else {
@@ -1083,7 +1091,7 @@ async function commitRows(rows) {
     }
     const newRanges = [];
     for (const { r, parameter } of rangeRows) {
-      const gender = normalizeGender(r.gender) || 'Any';
+      const gender = normalizeGender(r.gender) || 'All';
       const ageUnit = normalizeAgeUnit(r.ageUnit) || 'Years';
       const ageMaxUnit = normalizeAgeUnit(r.ageMaxUnit) || ageUnit;
       const ageMin = r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin);

@@ -9,10 +9,10 @@ import {
 import { downloadFile } from '../../utils/download';
 import { TEST_TYPE_OPTIONS, TEST_TYPE_LABEL } from '../../utils/testType';
 
-const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
+const GENDER_OPTIONS = ['All', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
-const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
+const emptyRangeRow = () => ({ gender: 'All', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
 // A range row counts once it has a range or its own printed text (e.g. "Negative").
 const rowFilled = (r) => !!(r.normalRangeLow || r.normalRangeHigh || r.rangeText?.trim());
 const blankTestForm = () => ({ testCode: '', testName: '', category: '', sampleType: '', testType: '', interpretation: '' });
@@ -879,7 +879,7 @@ This cannot be undone.`)) return;
                     <td>{r.row}</td><td>{r.testCode}</td><td>{r.testName}</td><td>{r.parameterName || '—'}</td>
                     <td>{r.unit || '—'}</td><td>{r.method || '—'}</td>
                     <td>{r.normalRangeLow || r.normalRangeHigh ? `${r.normalRangeLow}-${r.normalRangeHigh}` : '—'}</td>
-                    <td>{r.rangeLow || r.rangeHigh ? `${r.gender || 'Any'} ${r.ageMin || '0'} ${r.ageUnit || 'Years'} - ${r.ageMax || '∞'} ${r.ageMaxUnit || r.ageUnit || 'Years'}: ${r.rangeLow}-${r.rangeHigh}` : '—'}</td>
+                    <td>{r.rangeLow || r.rangeHigh ? `${r.gender || 'All'} ${r.ageMin || '0'} ${r.ageUnit || 'Years'} - ${r.ageMax || '∞'} ${r.ageMaxUnit || r.ageUnit || 'Years'}: ${r.rangeLow}-${r.rangeHigh}` : '—'}</td>
                     <td>{r.action}</td>
                     <td>{r.valid ? <span className="badge PAID">Valid</span> : <span className="badge EXPIRED">{r.errors.join('; ')}</span>}</td>
                   </tr>

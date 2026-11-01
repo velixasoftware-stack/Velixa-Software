@@ -335,7 +335,7 @@ const ParameterMaster = sequelize.define('ParameterMaster', {
 // normalRangeLow/High above when nothing here matches.
 const ParameterNormalRange = sequelize.define('ParameterNormalRange', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  gender: { type: DataTypes.STRING, allowNull: false, defaultValue: 'Any' }, // Male | Female | Other | Any
+  gender: { type: DataTypes.STRING, allowNull: false, defaultValue: 'All' }, // All (everyone) | Male | Female | Other - older rows said "Any"
   ageMin: { type: DataTypes.INTEGER }, // null = no lower bound
   ageMax: { type: DataTypes.INTEGER }, // null = no upper bound
   ageUnit: { type: DataTypes.STRING, defaultValue: 'Years' }, // Years | Months | Days - the unit ageMin (and ageMax, unless ageMaxUnit is set) is in (e.g. a "0-7 days" newborn band)

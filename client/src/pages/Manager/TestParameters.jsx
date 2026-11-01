@@ -8,10 +8,10 @@ import {
 } from '../../components/NormalRangeText';
 import { downloadFile } from '../../utils/download';
 
-const GENDER_OPTIONS = ['Any', 'Male', 'Female', 'Other'];
+const GENDER_OPTIONS = ['All', 'Male', 'Female', 'Other'];
 const AGE_UNIT_OPTIONS = ['Years', 'Months', 'Days'];
 const AGE_UNIT_ABBR = { Years: 'y', Months: 'm', Days: 'd' };
-const emptyRangeRow = () => ({ gender: 'Any', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
+const emptyRangeRow = () => ({ gender: 'All', ageMin: '', ageMax: '', ageUnit: 'Years', ageMaxUnit: 'Years', normalRangeLow: '', normalRangeHigh: '', rangeText: '' });
 // A range row counts once it has a range or its own printed text (e.g. "Negative").
 const rowFilled = (r) => !!(r.normalRangeLow || r.normalRangeHigh || r.rangeText?.trim());
 const blankParamForm = () => ({ sequence: '', parameterName: '', unit: '', method: '', isInterpretation: false, normalRangeLow: '', normalRangeHigh: '', ...blankRangeTexts(), description: '' });
