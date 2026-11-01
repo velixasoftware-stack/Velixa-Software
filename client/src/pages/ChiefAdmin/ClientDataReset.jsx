@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { downloadFile } from '../../utils/download';
+import SearchSelect from '../../components/SearchSelect';
 
 /**
  * Chief Admin: remove one client's data, area by area (bills & lab work,
@@ -115,12 +116,15 @@ export default function ClientDataReset() {
           Remove one client&apos;s data - for example test bills entered before going live. Only the client you pick
           is affected; its users, logins, subscription and branding are never removed here.
         </p>
-        <label style={{ maxWidth: 420, display: 'block' }}><span>Client</span>
-          <select value={clientId} onChange={(e) => chooseClient(e.target.value)}>
-            <option value="">— Select a client —</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.clientCode} — {c.clientName}</option>)}
-          </select>
-        </label>
+        <div style={{ maxWidth: 420 }}>
+          <span className="reset-field-label">Client</span>
+          <SearchSelect
+            options={clients.map((c) => ({ value: c.id, label: `${c.clientCode} — ${c.clientName}`, sublabel: [c.mobile, c.email].filter(Boolean).join(' · ') }))}
+            value={clientId}
+            onChange={(id) => chooseClient(id ? String(id) : '')}
+            placeholder="Search by client code, name, mobile…"
+          />
+        </div>
         {error && <p className="error-text">{error}</p>}
       </div>
 
