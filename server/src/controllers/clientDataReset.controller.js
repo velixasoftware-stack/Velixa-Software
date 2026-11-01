@@ -52,19 +52,22 @@ const AREAS = [
   },
   {
     key: 'prices',
-    label: 'Test Prices & Short Names',
-    description: "The client's price list and its own short names for tests.",
+    label: 'Test Prices, Short Names & Specimens',
+    description: "The client's price list, and its own short names and specimens for tests.",
     counts: {
       'Test prices': 'SELECT count(*) FROM client_test_price WHERE "clientId" = :c',
       'Short names': 'SELECT count(*) FROM client_test_short_name WHERE "clientId" = :c',
+      Specimens: 'SELECT count(*) FROM client_test_specimen WHERE "clientId" = :c',
     },
     exports: {
       client_test_price: 'SELECT * FROM client_test_price WHERE "clientId" = :c',
       client_test_short_name: 'SELECT * FROM client_test_short_name WHERE "clientId" = :c',
+      client_test_specimen: 'SELECT * FROM client_test_specimen WHERE "clientId" = :c',
     },
     deletes: [
       'DELETE FROM client_test_price WHERE "clientId" = :c',
       'DELETE FROM client_test_short_name WHERE "clientId" = :c',
+      'DELETE FROM client_test_specimen WHERE "clientId" = :c',
     ],
   },
   {

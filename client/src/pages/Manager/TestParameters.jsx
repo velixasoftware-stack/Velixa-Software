@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import ParamOrder from '../../components/ParamOrder';
 import { Icon } from '../../components/Icons';
+import SpecimenEditor from '../../components/SpecimenEditor';
 import SearchSelect from '../../components/SearchSelect';
 import {
   blankRangeTexts, saveRangeTexts, RangeRow, RangeTextField, OldRangeTextNote,
@@ -377,9 +378,10 @@ It will no longer appear on result entry. Reports already released keep their va
                 <div>
                   <h2>{selectedTest.testName}</h2>
                   <p className="meta">
-                    <span className="test-code">{selectedTest.testCode}</span> · {selectedTest.category || 'Uncategorized'} · {selectedTest.sampleType || 'Sample type not set'} ·{' '}
+                    <span className="test-code">{selectedTest.testCode}</span> · {selectedTest.category || 'Uncategorized'} · {selectedTest.clientSampleType || selectedTest.sampleType || 'Sample type not set'} ·{' '}
                     {(selectedTest.ParameterMasters || []).length} parameter(s) configured
                   </p>
+                  <SpecimenEditor test={selectedTest} onSaved={loadAll} />
                 </div>
                 <button type="button" onClick={openAddParameter}>+ Add Parameter</button>
               </div>

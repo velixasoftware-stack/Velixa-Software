@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const XLSX = require('xlsx');
 const {
   sequelize, TestGroup, TestMaster, ParameterMaster, ParameterNormalRange, BillItem, Result,
-  ClientTestPrice, ClientTestShortName, PayorTestPrice, ClientParameterTrend,
+  ClientTestPrice, ClientTestShortName, ClientTestSpecimen, PayorTestPrice, ClientParameterTrend,
 } = require('../models');
 const { sortParameters } = require('../utils/parameterOrder');
 const { normalizeTestType } = require('../utils/testType');
@@ -227,6 +227,10 @@ async function listTests(req, res) {
     ? new Map((await ClientTestPrice.findAll({ where: { clientId }, attributes: ['testId', 'active', 'overrideChiefInactive'] }))
       .map((r) => [r.testId, r]))
     : null;
+  // This client's own specimen per test (Chief Admin's sampleType otherwise).
+  const specimenByTestId = clientId
+    ? new Map((await ClientTestSpecimen.findAll({ where: { clientId }, attributes: ['testId', 'sampleType'] })).map((r) => [r.testId, r.sampleType]))
+    : null;
 
   const result = tests.map((t) => {
     const json = t.toJSON();
@@ -242,6 +246,7 @@ async function listTests(req, res) {
       const row = priceRowByTestId.get(t.id);
       json.activeForClient = row ? isBillableForClient(row, t) : t.active !== false;
     }
+    if (specimenByTestId) json.clientSampleType = specimenByTestId.get(t.id) || null;
     delete json.AssignedParameters;
     return json;
   });
@@ -250,6 +255,28 @@ async function listTests(req, res) {
   // customised a universal parameter (customizedForClient), else the shared.
   await applyClientRanges(result.flatMap((t) => t.ParameterMasters), clientId);
   return res.json(result);
+}
+
+// PUT /api/test-config/tests/:testId/specimen  Body: { sampleType }
+// The logged-in client's own specimen for a test, printed on its reports
+// instead of Chief Admin's - never changes Test Master or other clients.
+// Empty = remove it (back to Chief Admin's sample type).
+async function setClientSpecimen(req, res) {
+  const clientId = requesterClientId(req);
+  if (!clientId) return res.status(403).json({ message: 'Only a client can set its own specimen' });
+  const test = await TestMaster.findByPk(req.params.testId, { attributes: ['id', 'sampleType'] });
+  if (!test) return res.status(404).json({ message: 'Test not found' });
+  const sampleType = req.body.sampleType?.toString().trim() || '';
+  if (sampleType.length > 100) return res.status(400).json({ message: 'Specimen cannot be more than 100 characters' });
+
+  if (!sampleType) {
+    await ClientTestSpecimen.destroy({ where: { clientId, testId: test.id } });
+    return res.json({ testId: test.id, clientSampleType: null, sampleType: test.sampleType });
+  }
+  const existing = await ClientTestSpecimen.findOne({ where: { clientId, testId: test.id } });
+  if (existing) await existing.update({ sampleType });
+  else await ClientTestSpecimen.create({ clientId, testId: test.id, sampleType });
+  return res.json({ testId: test.id, clientSampleType: sampleType, sampleType: test.sampleType });
 }
 
 // PUT /api/masters/tests/:id
@@ -1137,6 +1164,6 @@ async function commitUpload(req, res) {
 }
 
 module.exports = {
-  createTest, listTests, updateTest, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, updateNormalRange, reorderParameters, setParameterSequence, removeParameter,
+  createTest, listTests, updateTest, setClientSpecimen, testUsage, deleteTest, bulkTestAction, addParameter, assignParameter, addNormalRange, deleteNormalRange, updateNormalRange, reorderParameters, setParameterSequence, removeParameter,
   downloadTemplate, previewUpload, commitUpload, listTestGroups, createTestGroup, setParameterTrend, setNormalRangeText, resetParameterRanges,
 };

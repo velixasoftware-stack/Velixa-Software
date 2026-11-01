@@ -15,6 +15,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(authenticate, requireActiveSubscription, requireRole(ROLES.MANAGER, ROLES.MASTER_MANAGER));
 
 router.get('/tests', testCtrl.listTests);
+router.put('/tests/:testId/specimen', testCtrl.setClientSpecimen); // this client's own specimen (not Chief Admin's)
 router.post('/tests/:testId/parameters', testCtrl.addParameter);
 router.post('/tests/:testId/parameters/:parameterId/assign', testCtrl.assignParameter);
 router.put('/tests/:testId/parameter-order', testCtrl.reorderParameters);

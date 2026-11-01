@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const {
   sequelize, Sample, BillItem, TestMaster, ParameterMaster, Result, Report, Bill, Patient, Client,
-  ReferralDoctor, Payor, ClientUser, ClientParameterTrend,
+  ReferralDoctor, Payor, ClientUser, ClientParameterTrend, ClientTestSpecimen,
 } = require('../models');
 const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange, printedRangeText } = require('../utils/normalRange');
@@ -336,6 +336,11 @@ async function getBillReport(req, res) {
   if (releasedSamples.length === 0) {
     return res.status(404).json({ message: 'No released reports for this bill yet' });
   }
+  // This client's own specimen per test, where it set one (else Chief Admin's sample type).
+  const specimenByTestId = new Map((await ClientTestSpecimen.findAll({
+    where: { clientId: bill.clientId, testId: [...new Set(releasedSamples.map((s) => s.BillItem.TestMaster.id))] },
+    attributes: ['testId', 'sampleType'],
+  })).map((r) => [r.testId, r.sampleType]));
 
   const age = bill.Patient?.age;
   const gender = bill.Patient?.gender;
@@ -357,7 +362,8 @@ async function getBillReport(req, res) {
   const testJson = (s) => ({
     testName: s.BillItem.TestMaster.testName,
     testCode: s.BillItem.TestMaster.testCode,
-    sampleType: s.BillItem.TestMaster.sampleType || null, // printed in bold under the test's results
+    // This client's own specimen if it set one, else Chief Admin's - printed in bold under the test's results.
+    sampleType: specimenByTestId.get(s.BillItem.TestMaster.id) || s.BillItem.TestMaster.sampleType || null,
     interpretation: s.BillItem.TestMaster.interpretation,
     barcode: s.barcode,
     collectedAt: s.collectedAt,

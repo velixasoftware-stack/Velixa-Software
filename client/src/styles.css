@@ -1738,3 +1738,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .reset-result { margin-top: 12px; padding: 10px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; }
 .reset-field-label { display: block; font-size: 11.5px; font-weight: 600; color: #475569; margin-bottom: 3px; }
 .report-sample-type { padding-top: 6px; font-size: 12.5px; color: #0f172a; }
+
+/* Clinic Test Parameters: the clinic's own specimen for a test. */
+.specimen-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 12.5px; }
+.specimen-line > span:first-child { color: #64748b; }
+.specimen-line input { width: 200px; padding: 4px 8px; font-size: 12px; height: 28px; }
+.specimen-line button { padding: 4px 10px; font-size: 11.5px; height: 28px; }
+.specimen-line .icon-btn { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #475569; }
+.specimen-tag { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: #f1f5f9; color: #64748b; }
+.specimen-tag.own { background: #ecfdf5; color: #047857; }

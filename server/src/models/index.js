@@ -380,6 +380,18 @@ const ClientTestShortName = sequelize.define('ClientTestShortName', {
   indexes: [{ unique: true, fields: ['clientId', 'testId'] }],
 });
 
+// A client's own specimen / sample type for a test (e.g. "Fluoride Plasma"
+// where Chief Admin's Test Master says "Serum") - printed on that client's
+// reports only. No row = Chief Admin's TestMaster.sampleType.
+const ClientTestSpecimen = sequelize.define('ClientTestSpecimen', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  sampleType: { type: DataTypes.STRING, allowNull: false },
+  ...AUDIT_FIELDS,
+}, {
+  tableName: 'client_test_specimen',
+  indexes: [{ unique: true, fields: ['clientId', 'testId'] }],
+});
+
 // One row per parameter a client wants trended on its patient reports (the AI
 // Trend Report section). Keyed by parameter, not test - a parameter assigned to
 // several tests (e.g. Glucose) is trended wherever it appears. No row = no trend.
@@ -755,6 +767,10 @@ ClientTestShortName.belongsTo(Client, { foreignKey: 'clientId' });
 
 TestMaster.hasMany(ClientTestShortName, { foreignKey: 'testId' });
 ClientTestShortName.belongsTo(TestMaster, { foreignKey: 'testId' });
+Client.hasMany(ClientTestSpecimen, { foreignKey: 'clientId', onDelete: 'CASCADE' });
+ClientTestSpecimen.belongsTo(Client, { foreignKey: 'clientId' });
+TestMaster.hasMany(ClientTestSpecimen, { foreignKey: 'testId', onDelete: 'CASCADE' });
+ClientTestSpecimen.belongsTo(TestMaster, { foreignKey: 'testId' });
 
 Client.hasMany(Package, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 Package.belongsTo(Client, { foreignKey: 'clientId' });
@@ -930,6 +946,7 @@ module.exports = {
   ParameterNormalRange,
   ClientParameterOverride,
   ClientTestShortName,
+  ClientTestSpecimen,
   ClientParameterTrend,
   ClientTestPrice,
   Package,
