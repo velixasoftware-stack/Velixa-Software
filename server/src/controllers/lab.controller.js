@@ -357,6 +357,7 @@ async function getBillReport(req, res) {
   const testJson = (s) => ({
     testName: s.BillItem.TestMaster.testName,
     testCode: s.BillItem.TestMaster.testCode,
+    sampleType: s.BillItem.TestMaster.sampleType || null, // printed in bold under the test's results
     interpretation: s.BillItem.TestMaster.interpretation,
     barcode: s.barcode,
     collectedAt: s.collectedAt,

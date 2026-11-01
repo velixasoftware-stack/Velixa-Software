@@ -184,6 +184,14 @@ function addTestUnits(units, t, testIdx, trendRows = []) {
       </div>
     ),
   }));
+  // "Sample Type: Serum" in bold right after the test's results - kept on the
+  // same page as its last result row.
+  if (t.sampleType && t.sampleType.trim()) {
+    units.push({
+      key: `t${testIdx}-sample`, kind: 'block', testIdx, keepWithPrevious: true,
+      node: <div className="report-sample-type"><strong>Sample Type: {t.sampleType}</strong></div>,
+    });
+  }
   if (t.interpretation) {
     units.push({
       key: `t${testIdx}-interp`, kind: 'block', testIdx,
