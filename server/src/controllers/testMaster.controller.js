@@ -826,6 +826,27 @@ function chunk(list, size) {
   return out;
 }
 
+// Spreadsheets spell these many ways - "ALL"/"Both" for everyone, "M"/"F",
+// "yrs", any case. Map the common spellings to the stored values; anything
+// unrecognised is returned as typed so the row check still flags it.
+const GENDER_ALIASES = {
+  any: 'Any', all: 'Any', both: 'Any', a: 'Any', everyone: 'Any', common: 'Any',
+  male: 'Male', m: 'Male', female: 'Female', f: 'Female', other: 'Other', o: 'Other',
+};
+const AGE_UNIT_ALIASES = {
+  years: 'Years', year: 'Years', yrs: 'Years', yr: 'Years', y: 'Years',
+  months: 'Months', month: 'Months', mon: 'Months', mons: 'Months', mo: 'Months',
+  days: 'Days', day: 'Days', d: 'Days',
+};
+function normalizeGender(value) {
+  const v = String(value ?? '').trim();
+  return GENDER_ALIASES[v.toLowerCase().replace(/\.$/, '')] || v;
+}
+function normalizeAgeUnit(value) {
+  const v = String(value ?? '').trim();
+  return AGE_UNIT_ALIASES[v.toLowerCase().replace(/\.$/, '')] || v;
+}
+
 // Reads the uploaded sheet into normalized rows and runs the per-row checks
 // that don't need the database. Shared by previewUpload and commitUpload.
 function parseUploadRows(buffer) {
@@ -850,11 +871,11 @@ function parseUploadRows(buffer) {
       isInterpretation: String(r.IS_INTERPRETATION || '').trim().toUpperCase() === 'Y',
       normalRangeLow: String(r.NORMAL_RANGE_LOW || '').trim(),
       normalRangeHigh: String(r.NORMAL_RANGE_HIGH || '').trim(),
-      gender: String(r.GENDER || '').trim(),
+      gender: normalizeGender(r.GENDER),
       ageMin: String(r.AGE_MIN ?? '').trim(),
       ageMax: String(r.AGE_MAX ?? '').trim(),
-      ageUnit: String(r.AGE_UNIT || '').trim(),
-      ageMaxUnit: String(r.AGE_TO_UNIT || '').trim(), // optional - blank = same as AGE_UNIT
+      ageUnit: normalizeAgeUnit(r.AGE_UNIT),
+      ageMaxUnit: normalizeAgeUnit(r.AGE_TO_UNIT), // optional - blank = same as AGE_UNIT
       rangeLow: String(r.RANGE_LOW || '').trim(),
       rangeHigh: String(r.RANGE_HIGH || '').trim(),
     };
@@ -864,7 +885,7 @@ function parseUploadRows(buffer) {
     if (!row.testCode) errors.push('TEST_CODE is missing');
     if (!row.testName) errors.push('TEST_NAME is missing');
     if (hasRangeRule && !row.parameterName) errors.push('PARAMETER_NAME is required to add an age/gender range');
-    if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')}`);
+    if (row.gender && !GENDER_OPTIONS.includes(row.gender)) errors.push(`GENDER must be one of ${GENDER_OPTIONS.join(', ')} (ALL = Any)`);
     if (row.ageUnit && !AGE_UNIT_OPTIONS.includes(row.ageUnit)) errors.push(`AGE_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
     if (row.ageMaxUnit && !AGE_UNIT_OPTIONS.includes(row.ageMaxUnit)) errors.push(`AGE_TO_UNIT must be one of ${AGE_UNIT_OPTIONS.join(', ')}`);
     if (row.ageMin && !/^\d+$/.test(row.ageMin)) errors.push('AGE_MIN must be a whole number');
@@ -1062,9 +1083,9 @@ async function commitRows(rows) {
     }
     const newRanges = [];
     for (const { r, parameter } of rangeRows) {
-      const gender = String(r.gender || '').trim() || 'Any';
-      const ageUnit = String(r.ageUnit || '').trim() || 'Years';
-      const ageMaxUnit = String(r.ageMaxUnit || '').trim() || ageUnit;
+      const gender = normalizeGender(r.gender) || 'Any';
+      const ageUnit = normalizeAgeUnit(r.ageUnit) || 'Years';
+      const ageMaxUnit = normalizeAgeUnit(r.ageMaxUnit) || ageUnit;
       const ageMin = r.ageMin === '' || r.ageMin == null ? null : Number(r.ageMin);
       const ageMax = r.ageMax === '' || r.ageMax == null ? null : Number(r.ageMax);
       const normalRangeLow = r.rangeLow || null;
