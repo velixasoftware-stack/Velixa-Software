@@ -23,7 +23,11 @@ const { itemCharges, cancellationSplit, withCharges, round2 } = require('../util
 async function generateBillNo(clientId, transaction) {
   await sequelize.query('SELECT pg_advisory_xact_lock(:key)', { replacements: { key: 900000000 + Number(clientId) }, transaction });
   const client = await Client.findByPk(clientId, { attributes: ['clientCode'], transaction });
-  const code = client?.clientCode || `C${clientId}`;
+  // Bill numbers start with just the last 3 digits of the client code
+  // (CLI0009 -> "009", so bill 1 is 00900001) - bills are always looked up
+  // within their own client, so two clients ending alike never clash.
+  const digits = (client?.clientCode || '').replace(/\D/g, '') || String(clientId);
+  const code = digits.slice(-3).padStart(3, '0');
   const rows = await Bill.findAll({
     where: { clientId, billNo: { [Op.like]: `${code}%` } },
     attributes: ['billNo'],
