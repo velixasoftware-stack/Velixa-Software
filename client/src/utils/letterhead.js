@@ -36,13 +36,22 @@ export function analyzeLetterhead(url) {
           const { data } = ctx.getImageData(0, 0, w, h);
           const x0 = Math.round(w * 0.08);
           const x1 = Math.round(w * 0.92);
+          // A row belongs to the header/footer design if it has clearly dark
+          // printing (text, logos), or if it's tinted across most of its width -
+          // a solid pale colour band with no dark text in it (e.g. a light green
+          // footer strip). A faint watermark tints only part of a row, so it's ignored.
           const hasInk = (y) => {
-            let n = 0;
+            let dark = 0;
+            let tint = 0;
             for (let x = x0; x < x1; x += 1) {
               const i = (y * w + x) * 4;
-              if (data[i + 3] > 128 && Math.min(data[i], data[i + 1], data[i + 2]) < 200) n += 1;
+              if (data[i + 3] <= 128) continue;
+              const min = Math.min(data[i], data[i + 1], data[i + 2]);
+              if (min < 200) dark += 1;
+              if (min < 245) tint += 1;
             }
-            return n > (x1 - x0) * 0.01;
+            const span = x1 - x0;
+            return dark > span * 0.01 || tint > span * 0.6;
           };
           let headerEnd = -1;
           for (let y = 0; y < h * 0.35; y += 1) if (hasInk(y)) headerEnd = y;
