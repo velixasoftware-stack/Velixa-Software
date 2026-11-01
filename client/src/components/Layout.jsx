@@ -129,6 +129,7 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/masters"><Icon name="masters" size={17} /><span>Test Master</span></NavLink>
               <NavLink to="/chief-admin/patient-titles"><Icon name="user" size={17} /><span>Patient Titles</span></NavLink>
               <NavLink to="/chief-admin/test-removal"><Icon name="close" size={17} /><span>Test Removal</span></NavLink>
+              <NavLink to="/chief-admin/data-reset"><Icon name="trash" size={17} /><span>Client Data Reset</span></NavLink>
               <NavLink to="/chief-admin/users"><Icon name="team" size={17} /><span>Team</span></NavLink>
               <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>
               <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>

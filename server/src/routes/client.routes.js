@@ -9,6 +9,7 @@ const userCtrl = require('../controllers/user.controller');
 const priceCtrl = require('../controllers/clientTestPrice.controller');
 const roleScreenCtrl = require('../controllers/roleScreen.controller');
 const paymentCtrl = require('../controllers/payment.controller');
+const resetCtrl = require('../controllers/clientDataReset.controller');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -48,6 +49,10 @@ router.post('/:clientId/manual-payment', requireChiefAdminRole(CHIEF_ADMIN_ROLES
 router.get('/:clientId/revenue', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN), clientCtrl.getClientRevenue);
 // A promotional free period for an existing client - ADMIN only, money-related like manual-payment above.
 router.post('/:clientId/free-days', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN), subCtrl.grantFreeDays);
+// Client Data Reset - ADMIN only: see, back up and remove one client's data by area.
+router.get('/:clientId/data-summary', requireAdminRole, resetCtrl.getDataSummary);
+router.get('/:clientId/data-export', requireAdminRole, resetCtrl.exportClientData);
+router.post('/:clientId/data-reset', requireAdminRole, resetCtrl.resetClientData);
 
 router.post('/:clientId/users', requireAdminRole, userCtrl.createUser);
 router.get('/:clientId/users', assignedClientOnly, userCtrl.listUsers);
