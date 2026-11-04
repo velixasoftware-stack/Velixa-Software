@@ -551,6 +551,9 @@ const ReferralDoctor = sequelize.define('ReferralDoctor', {
 const Bill = sequelize.define('Bill', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   billNo: { type: DataTypes.STRING, allowNull: false },
+  // Random, unguessable code in the report's QR link (/r/<token>) - opens this
+  // bill's released report without a login. Made the first time the report is opened.
+  reportToken: { type: DataTypes.STRING, unique: true },
   walkInDate: { type: DataTypes.DATEONLY },
   visitType: { type: DataTypes.STRING, defaultValue: 'WALK-IN' }, // IPD | OPD | WALK-IN
   priority: { type: DataTypes.STRING, defaultValue: 'ROUTINE' }, // ROUTINE | URGENT

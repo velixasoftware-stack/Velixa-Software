@@ -1747,3 +1747,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .specimen-line .icon-btn { width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #475569; }
 .specimen-tag { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: #f1f5f9; color: #64748b; }
 .specimen-tag.own { background: #ecfdf5; color: #047857; }
+
+/* Lab report footer: QR code (opens this report online) bottom-left, page number right. */
+.report-print-footer.has-qr { display: flex; justify-content: space-between; align-items: flex-end; text-align: left; }
+.report-qr { display: flex; align-items: center; gap: 6px; font-size: 8.5px; line-height: 1.25; color: #475569; }
+.report-qr img, .report-qr-box { display: block; width: 18mm; height: 18mm; flex-shrink: 0; background: #fff; }
+.report-page-no { margin-left: auto; }
+.report-sheet > .report-print-footer { margin-top: 18px; }
+.public-report-title { font-size: 14px; color: #0f172a; }
+.public-report { max-width: 900px; margin: 0 auto; padding: 16px; }
+@media print {
+  .public-report { padding: 0; max-width: none; margin: 0; }
+}

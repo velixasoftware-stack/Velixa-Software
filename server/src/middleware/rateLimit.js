@@ -20,4 +20,14 @@ const signupLimiter = rateLimit({
   message: { message: 'Too many signup attempts from this network. Please try again later.' },
 });
 
-module.exports = { loginLimiter, signupLimiter };
+// The public report link from a report's QR code - generous for real
+// patients and front desks, but slows down anyone trying to guess links.
+const publicReportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
+module.exports = { loginLimiter, signupLimiter, publicReportLimiter };

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import QRCode from 'qrcode';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/client';
 import ShareButton from '../../components/ShareButton';
@@ -362,7 +363,12 @@ function usePageLetterhead(url) {
   return info?.isPage ? info : null;
 }
 
-export default function LabReport() {
+/**
+ * The lab report. Opened from Orders by bill (logged in), or - with
+ * `publicToken` - from the QR code printed on a report (/r/<token>, no login,
+ * view and print only).
+ */
+export default function LabReport({ publicToken } = {}) {
   const { billId } = useParams();
   const [report, setReport] = useState(null);
   const [trend, setTrend] = useState(null);
@@ -370,9 +376,16 @@ export default function LabReport() {
   const [includeHeader, setIncludeHeader] = useState(true);
   const [includeTrend, setIncludeTrend] = useState(false); // trend prints only once this is ticked
   const [heights, setHeights] = useState(null);
+  const [qrImage, setQrImage] = useState('');
   const measureRef = useRef(null);
 
   useEffect(() => {
+    if (publicToken) {
+      api.get(`/public/reports/${publicToken}`)
+        .then((r) => setReport(r.data))
+        .catch((err) => setError(err.response?.status === 404 ? 'This report link is not valid, or the report is not available any more.' : (err.response?.data?.message || 'Failed to load report')));
+      return;
+    }
     api.get(`/report-view/bills/${billId}/report`)
       .then((r) => setReport(r.data))
       .catch((err) => setError(err.response?.data?.message || 'Failed to load report'));
@@ -382,7 +395,19 @@ export default function LabReport() {
       // Only parameters the lab ticked "Trend" for come back - none ticked, no section.
       .then((r) => setTrend(r.data?.parameters?.length ? r.data : null))
       .catch(() => setTrend(null));
-  }, [billId]);
+  }, [billId, publicToken]);
+
+  // QR code (printed bottom-left on every page) opening this report's public
+  // link - patient details and results, no login needed.
+  const reportLink = report?.reportToken ? `${window.location.origin}/r/${report.reportToken}` : '';
+  useEffect(() => {
+    if (!reportLink) return undefined;
+    let alive = true;
+    QRCode.toDataURL(reportLink, { margin: 1, width: 240, errorCorrectionLevel: 'M' })
+      .then((url) => { if (alive) setQrImage(url); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [reportLink]);
 
   // Older server responses have no groups - treat them as one unnamed group.
   const units = useMemo(() => (report ? buildUnits({
@@ -447,28 +472,48 @@ export default function LabReport() {
   const pageBackground = pageLetterhead && includeHeader
     ? <img src={report.client.letterheadUrl} alt="" className="report-page-bg" onLoad={measure} />
     : null;
+  // Page footer: the report's QR code bottom-left, page number right. The QR
+  // box is the same size before its image is ready, so page breaks measured
+  // earlier stay right.
+  const footer = (label, probe = false) => (
+    <div className={`report-print-footer${reportLink ? ' has-qr' : ''}`} {...(probe ? { 'data-probe': 'footer' } : {})}>
+      {reportLink && (
+        <div className="report-qr">
+          {qrImage ? <img src={qrImage} alt="QR code - scan to view this report" /> : <span className="report-qr-box" />}
+          <span>Scan to view<br />this report</span>
+        </div>
+      )}
+      {label && <span className="report-page-no">{label}</span>}
+    </div>
+  );
 
   return (
     <div>
       <div className="no-print report-toolbar">
-        <Link to="/app/orders">&larr; Back to Orders</Link>
+        {publicToken ? (
+          <strong className="public-report-title">{report.client.clientName} — Lab Report</strong>
+        ) : (
+          <Link to="/app/orders">&larr; Back to Orders</Link>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, fontWeight: 'normal' }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={includeHeader} onChange={(e) => setIncludeHeader(e.target.checked)} />
           Include letterhead/logo header
         </label>
         {/* Always offered; ticking it adds the trend for the parameters the
             lab ticked "Trend" for in Test Parameters. */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, fontWeight: 'normal' }}>
-          <input type="checkbox" style={{ width: 'auto' }} checked={includeTrend} onChange={(e) => setIncludeTrend(e.target.checked)} />
-          Include AI Trend Report
-        </label>
+        {!publicToken && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, fontWeight: 'normal' }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={includeTrend} onChange={(e) => setIncludeTrend(e.target.checked)} />
+            Include AI Trend Report
+          </label>
+        )}
         {includeTrend && !trend && (
           <span style={{ fontSize: 12, color: '#b45309' }}>
             No trend parameters on this report - tick "Trend" against parameters in Test Parameters.
           </span>
         )}
         <div className="report-toolbar-actions">
-          <ShareButton apiPath={`/report-view/bills/${billId}/report/share`} />
+          {!publicToken && <ShareButton apiPath={`/report-view/bills/${billId}/report/share`} />}
           <button onClick={() => window.print()}>Print Report</button>
         </div>
       </div>
@@ -478,6 +523,7 @@ export default function LabReport() {
         {pageBackground}
         {header}
         <UnitRun units={units} />
+        {reportLink && footer(null)}
       </div>
 
       {/* The report prints on A4 - set only while this page is open, so bills
@@ -492,7 +538,7 @@ export default function LabReport() {
             {pageBackground}
             <div className="report-print-header">{header}</div>
             <div className="report-print-body"><UnitRun units={pageUnits} /></div>
-            <div className="report-print-footer">Page {i + 1} of {pages.length}</div>
+            {footer(`Page ${i + 1} of ${pages.length}`)}
           </div>
         ))}
       </div>
@@ -501,7 +547,7 @@ export default function LabReport() {
       <div className="report-measure" ref={measureRef} aria-hidden="true">
         <div className={`report-print-page${pageClass}`} style={{ ...pageStyle, height: 'auto' }}>
           <div className="report-print-header" data-probe="header">{header}</div>
-          <div className="report-print-footer" data-probe="footer">Page 1 of 1</div>
+          {footer('Page 1 of 1', true)}
         </div>
         <div className={`report-print-page report-measure-body${pageClass}`} style={pageStyle}><div data-probe="body" style={{ height: '100%' }} /></div>
         <div className="report-print-page" style={{ height: 'auto' }}>

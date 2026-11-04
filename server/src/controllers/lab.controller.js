@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Sample, BillItem, TestMaster, ParameterMaster, Result, Report, Bill, Patient, Client,
@@ -323,7 +324,28 @@ async function getBillReport(req, res) {
   const { clientId } = req.user;
   const bill = await Bill.findOne({ where: { id: req.params.billId, clientId }, include: [Patient, Client, ReferralDoctor, Payor] });
   if (!bill) return res.status(404).json({ message: 'Bill not found' });
+  const report = await buildBillReport(bill);
+  if (!report) return res.status(404).json({ message: 'No released reports for this bill yet' });
+  // The QR code printed on the report links to /r/<reportToken>.
+  if (!bill.reportToken) await bill.update({ reportToken: crypto.randomBytes(16).toString('hex') });
+  return res.json({ ...report, reportToken: bill.reportToken });
+}
 
+// GET /api/public/reports/:token - no login: what the QR code on a printed
+// report opens. Same released report as the lab sees (nothing unreleased or
+// revoked); the token is 32 random hex characters, so it can't be guessed.
+async function getPublicReport(req, res) {
+  const token = String(req.params.token || '');
+  if (!/^[a-f0-9]{32}$/.test(token)) return res.status(404).json({ message: 'Report not found' });
+  const bill = await Bill.findOne({ where: { reportToken: token }, include: [Patient, Client, ReferralDoctor, Payor] });
+  const report = bill && await buildBillReport(bill);
+  if (!report) return res.status(404).json({ message: 'Report not found' });
+  return res.json({ ...report, reportToken: token, isPublic: true });
+}
+
+/** The released report for one bill (null when nothing is released yet). */
+async function buildBillReport(bill) {
+  const { clientId } = bill;
   const samples = await Sample.findAll({
     where: { clientId },
     include: [
@@ -333,9 +355,7 @@ async function getBillReport(req, res) {
     ],
   });
   const releasedSamples = samples.filter((s) => s.status === 'RELEASED');
-  if (releasedSamples.length === 0) {
-    return res.status(404).json({ message: 'No released reports for this bill yet' });
-  }
+  if (releasedSamples.length === 0) return null;
   // This client's own specimen per test, where it set one (else Chief Admin's sample type).
   const specimenByTestId = new Map((await ClientTestSpecimen.findAll({
     where: { clientId: bill.clientId, testId: [...new Set(releasedSamples.map((s) => s.BillItem.TestMaster.id))] },
@@ -395,7 +415,7 @@ async function getBillReport(req, res) {
     doctor: signatureFor(g.samples),
   }));
 
-  return res.json({
+  return {
     groups,
     doctor,
     bill: {
@@ -419,7 +439,7 @@ async function getBillReport(req, res) {
     },
     // Same tests, flat in group order - kept for anything reading the old shape.
     tests: groups.flatMap((g) => g.tests),
-  });
+  };
 }
 
 // Report group order: Haematology first, Biochemistry next, then any other
@@ -806,6 +826,6 @@ async function getBillTrendReport(req, res) {
 }
 
 module.exports = {
-  listSamples, getSample, collectSample, collectSamples, enterResults, verifySample, releaseSample, revokeReport, revokeReports, getBillReport, getBillTrendReport, shareReport,
+  listSamples, getSample, collectSample, collectSamples, enterResults, verifySample, releaseSample, revokeReport, revokeReports, getBillReport, getPublicReport, getBillTrendReport, shareReport,
   getPreviousResults, getPendingTests,
 };

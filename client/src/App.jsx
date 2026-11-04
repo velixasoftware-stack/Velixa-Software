@@ -13,6 +13,7 @@ import PatientTitles from './pages/ChiefAdmin/PatientTitles';
 import ChiefAdminUsers from './pages/ChiefAdmin/ChiefAdminUsers';
 import TestRemoval from './pages/ChiefAdmin/TestRemoval';
 import ClientDataReset from './pages/ChiefAdmin/ClientDataReset';
+import PublicReport from './pages/PublicReport';
 import ChiefAdminTickets from './pages/ChiefAdmin/Tickets';
 import Integrations from './pages/ChiefAdmin/Integrations';
 import SalesDashboard from './pages/ChiefAdmin/SalesDashboard';
@@ -44,6 +45,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Login />} />
       <Route path="/chief-admin/login" element={<Login variant="chief" />} />
+      {/* No login: the QR code printed on a lab report opens this. */}
+      <Route path="/r/:token" element={<PublicReport />} />
 
       <Route
         path="/chief-admin"

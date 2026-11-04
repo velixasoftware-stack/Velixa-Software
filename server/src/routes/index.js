@@ -14,6 +14,7 @@ router.use('/billing-settings', require('./billingSettings.routes'));
 router.use('/lab', require('./lab.routes'));
 router.use('/report-view', require('./reportView.routes'));
 router.use('/reports', require('./report.routes'));
+router.use('/public', require('./publicReport.routes')); // no login - report QR links
 router.use('/tickets', require('./ticket.routes'));
 router.use('/branding', require('./branding.routes'));
 router.use('/notification-settings', require('./notificationSettings.routes'));
