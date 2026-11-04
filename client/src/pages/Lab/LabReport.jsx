@@ -19,7 +19,7 @@ function formatDateTime(d) {
 }
 
 /** Letterhead (or its reserved blank space) + title + patient details - printed identically at the top of every page. */
-function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLetterhead }) {
+function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLetterhead, qr }) {
   const { patient, client } = report;
   // When the first sample on this report was collected.
   const collectedAt = (report.tests || []).map((t) => t.collectedAt).filter(Boolean).sort()[0];
@@ -55,6 +55,10 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
       {/* Two columns of "Label : Value" rows (left: patient, right: order) -
           compact, so the results start higher up the page. Read row by row:
           each pair below is one row, left then right. */}
+      {/* The report's QR code sits at the right of the patient details box (on
+          every page) - scanning it opens this report online. qr = '' while the
+          image is being made: an empty box of the same size keeps the layout. */}
+      <div className={`lab-report-info-box${qr != null ? ' has-qr' : ''}`}>
       <div className="lab-report-info">
         <div><span>Patient Name</span><strong>{patientLabel(patient)}</strong></div>
         <div><span>Order ID</span><strong>{report.bill.billNo}</strong></div>
@@ -64,6 +68,12 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
         <div><span>Collection Date</span><strong>{formatDateTime(collectedAt)}</strong></div>
         <div><span>Referred By</span><strong>{doctorLabel(report.bill.referredDoctor) || 'Self'}</strong></div>
         <div><span>Report Date</span><strong>{formatDateTime(releasedAt)}</strong></div>
+      </div>
+      {qr != null && (
+        <div className="report-qr" title="Scan to view this report">
+          {qr ? <img src={qr} alt="QR code - scan to view this report" /> : <span className="report-qr-box" />}
+        </div>
+      )}
       </div>
     </>
   );
@@ -458,7 +468,7 @@ export default function LabReport({ publicToken } = {}) {
   const { tests } = report;
   const releasedAt = tests.map((t) => t.releasedAt).filter(Boolean).sort().slice(-1)[0];
   // The letterhead's height is only known once its image loads - re-measure then so pages split correctly.
-  const header = <ReportHeader report={report} includeHeader={includeHeader} releasedAt={releasedAt} onImageLoad={measure} pageLetterhead={pageLetterhead} />;
+  const header = <ReportHeader report={report} includeHeader={includeHeader} releasedAt={releasedAt} onImageLoad={measure} pageLetterhead={pageLetterhead} qr={reportLink ? qrImage : null} />;
   // Full-page letterhead: the report prints inside its blank middle - just
   // below its header, just above its footer (a lab's own Report Branding
   // values win over the detected ones). The same space is kept with the
@@ -472,19 +482,9 @@ export default function LabReport({ publicToken } = {}) {
   const pageBackground = pageLetterhead && includeHeader
     ? <img src={report.client.letterheadUrl} alt="" className="report-page-bg" onLoad={measure} />
     : null;
-  // Page footer: the report's QR code bottom-left, page number right. The QR
-  // box is the same size before its image is ready, so page breaks measured
-  // earlier stay right.
+  // Page footer: the page number.
   const footer = (label, probe = false) => (
-    <div className={`report-print-footer${reportLink ? ' has-qr' : ''}`} {...(probe ? { 'data-probe': 'footer' } : {})}>
-      {reportLink && (
-        <div className="report-qr">
-          {qrImage ? <img src={qrImage} alt="QR code - scan to view this report" /> : <span className="report-qr-box" />}
-          <span>Scan to view<br />this report</span>
-        </div>
-      )}
-      {label && <span className="report-page-no">{label}</span>}
-    </div>
+    <div className="report-print-footer" {...(probe ? { 'data-probe': 'footer' } : {})}>{label}</div>
   );
 
   return (
@@ -523,7 +523,6 @@ export default function LabReport({ publicToken } = {}) {
         {pageBackground}
         {header}
         <UnitRun units={units} />
-        {reportLink && footer(null)}
       </div>
 
       {/* The report prints on A4 - set only while this page is open, so bills

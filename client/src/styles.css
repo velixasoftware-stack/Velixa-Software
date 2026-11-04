@@ -1695,7 +1695,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .lab-report-info span::after { content: ':'; float: right; padding-right: 8px; }
 .lab-report-info strong { font-weight: 600; color: #0f172a; overflow-wrap: anywhere; }
 .has-page-letterhead .lab-report-info { background: rgba(255, 255, 255, 0.75); }
-.report-header-slot:has(+ .lab-report-info) { margin-bottom: 8px; }
+.report-header-slot:has(+ .lab-report-info), .report-header-slot:has(+ .lab-report-info-box) { margin-bottom: 8px; }
 
 /* Normal Ranges dialog: compact icon actions and the Small / Big text box. */
 .range-row-actions { display: flex; gap: 4px; justify-content: flex-end; }
@@ -1748,12 +1748,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .specimen-tag { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: #f1f5f9; color: #64748b; }
 .specimen-tag.own { background: #ecfdf5; color: #047857; }
 
-/* Lab report footer: QR code (opens this report online) bottom-left, page number right. */
-.report-print-footer.has-qr { display: flex; justify-content: space-between; align-items: flex-end; text-align: left; }
-.report-qr { display: flex; align-items: center; gap: 6px; font-size: 8.5px; line-height: 1.25; color: #475569; }
-.report-qr img, .report-qr-box { display: block; width: 18mm; height: 18mm; flex-shrink: 0; background: #fff; }
-.report-page-no { margin-left: auto; }
-.report-sheet > .report-print-footer { margin-top: 18px; }
+/* Lab report: the QR code (opens this report online) at the right of the patient details box. */
+.lab-report-info-box.has-qr { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; }
+.lab-report-info-box.has-qr .lab-report-info { flex: 1; min-width: 0; border: 0; padding: 0; background: none; }
+.has-page-letterhead .lab-report-info-box.has-qr { background: rgba(255, 255, 255, 0.75); }
+.report-qr { flex-shrink: 0; }
+.report-qr img, .report-qr-box { display: block; width: 19mm; height: 19mm; background: #fff; }
 .public-report-title { font-size: 14px; color: #0f172a; }
 .public-report { max-width: 900px; margin: 0 auto; padding: 16px; }
 @media print {
