@@ -118,6 +118,7 @@ h4 { font-size: 13.5px; margin: 0 0 8px; }
 .main-content { flex: 1; min-width: 0; padding: 18px; overflow-x: auto; }
 .topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 20px; position: relative; z-index: 101; }
 .topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.topbar-location { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 .topbar-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .topbar-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .topbar-clock {
@@ -576,7 +577,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 .login-card label span { display: block; margin-bottom: 6px; font-weight: 600; color: #334155; }
 .input-with-icon { position: relative; display: flex; align-items: center; }
 .input-with-icon svg { position: absolute; left: 12px; color: #94a3b8; pointer-events: none; }
-.input-with-icon input { padding-left: 36px; }
+.input-with-icon input, .input-with-icon select { padding-left: 36px; }
 .input-with-icon input[type='password'],
 .input-with-icon input[data-pw] { padding-right: 38px; }
 .pw-toggle {
@@ -1759,3 +1760,5 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 @media print {
   .public-report { padding: 0; max-width: none; margin: 0; }
 }
+.link-btn { background: none; border: 0; padding: 0; color: #2563eb; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.link-btn:hover { text-decoration: underline; }

@@ -237,7 +237,7 @@ export default function Orders() {
               <tr className={expanded ? 'order-row-expanded' : ''}>
                 <td>
                   <div className="cell-main">{b.billNo}</div>
-                  <div className="cell-sub">{b.walkInDate}</div>
+                  <div className="cell-sub">{b.walkInDate}{auth?.client?.multiLocation && b.location ? ` · ${b.location}` : ''}</div>
                 </td>
                 <td>
                   <div className="cell-main">{patientLabel(b.patient)}</div>

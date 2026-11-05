@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 function IconUser() {
@@ -19,6 +20,15 @@ function IconBuilding() {
     </svg>
   );
 }
+function IconPin() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+      <circle cx="12" cy="9.5" r="2.5" />
+    </svg>
+  );
+}
+
 function IconLock() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -140,6 +150,10 @@ const FEATURES = [
 export default function Login({ variant = 'client' }) {
   const isChief = variant === 'chief';
   const [clientCode, setClientCode] = useState('');
+  // A client with more than one location picks where they work today; with
+  // one location (or none) the dropdown stays hidden.
+  const [locations, setLocations] = useState([]);
+  const [locationId, setLocationId] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -147,6 +161,23 @@ export default function Login({ variant = 'client' }) {
   const [loading, setLoading] = useState(false);
   const { loginChiefAdmin, loginClientUser, sessionMessage, clearSessionMessage } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isChief) return undefined;
+    const code = clientCode.trim();
+    if (!code) { setLocations([]); setLocationId(''); return undefined; }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api.get('/auth/locations', { params: { clientCode: code } })
+        .then(({ data }) => {
+          if (cancelled) return;
+          setLocations(data);
+          setLocationId((current) => (data.some((l) => String(l.id) === current) ? current : ''));
+        })
+        .catch(() => { if (!cancelled) setLocations([]); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [clientCode, isChief]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -158,7 +189,7 @@ export default function Login({ variant = 'client' }) {
         await loginChiefAdmin(username, password);
         navigate('/chief-admin');
       } else {
-        await loginClientUser(clientCode, username, password);
+        await loginClientUser(clientCode, username, password, locations.length > 1 ? locationId : undefined);
         navigate('/app');
       }
     } catch (err) {
@@ -202,6 +233,18 @@ export default function Login({ variant = 'client' }) {
                 <div className="input-with-icon">
                   <IconBuilding />
                   <input value={clientCode} onChange={(e) => setClientCode(e.target.value)} placeholder="e.g. DEMO001" required />
+                </div>
+              </label>
+            )}
+            {!isChief && locations.length > 1 && (
+              <label>
+                <span>Location</span>
+                <div className="input-with-icon">
+                  <IconPin />
+                  <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+                    <option value="">Select location</option>
+                    {locations.map((l) => <option key={l.id} value={l.id}>{l.name}{l.isMain ? ' (Main)' : ''}</option>)}
+                  </select>
                 </div>
               </label>
             )}

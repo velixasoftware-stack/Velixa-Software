@@ -44,6 +44,17 @@ export default function Masters() {
   const [search, setSearch] = useState(''); // filters the current tab's table
   const [pkgTestSearch, setPkgTestSearch] = useState(''); // filters the package test picker
 
+  // Several locations: prices are edited per location. Main's are the
+  // clinic's own prices (used on the other tabs); another location shows
+  // its own price where set, otherwise Main's.
+  const [locations, setLocations] = useState([]);
+  const [restrictedTo, setRestrictedTo] = useState(null);
+  const [priceLocationId, setPriceLocationId] = useState('');
+  const [locationPrices, setLocationPrices] = useState(null); // null = showing Main prices
+  const priceLocation = locations.find((l) => String(l.id) === String(priceLocationId));
+  const branchSelected = !!priceLocation && !priceLocation.isMain;
+  const locationParam = branchSelected ? { locationId: priceLocation.id } : {};
+
   async function loadAll() {
     const [testsRes, pricesRes, packagesRes] = await Promise.all([
       api.get('/masters/tests'),
@@ -64,7 +75,32 @@ export default function Masters() {
   useEffect(() => {
     loadAll();
     loadGroups();
+    api.get('/locations').then(({ data }) => {
+      setLocations(data.locations);
+      setRestrictedTo(data.restrictedTo);
+      setPriceLocationId(String(data.restrictedTo || data.currentLocationId || ''));
+    }).catch(() => {});
   }, []);
+
+  function loadLocationPrices() {
+    setLocationPrices(null);
+    if (!branchSelected) return;
+    api.get('/masters/client-test-price', { params: { locationId: priceLocation.id } })
+      .then((r) => setLocationPrices(r.data))
+      .catch((err) => setError(err.response?.data?.message || 'Failed to load location prices'));
+  }
+
+  useEffect(loadLocationPrices, [priceLocationId, locations]);
+
+  async function handleResetToMain(testId) {
+    setError('');
+    try {
+      await api.put('/masters/client-test-price', { testId, resetToMain: true, ...locationParam });
+      loadLocationPrices();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reset price');
+    }
+  }
 
   async function handleCreateTest(e) {
     e.preventDefault();
@@ -80,29 +116,48 @@ export default function Masters() {
 
   async function handleSetPrice(e) {
     e.preventDefault();
-    await api.put('/masters/client-test-price', { testId: Number(priceForm.testId), price: Number(priceForm.price) });
-    setPriceForm({ testId: '', price: '' });
-    loadAll();
+    setError('');
+    try {
+      await api.put('/masters/client-test-price', { testId: Number(priceForm.testId), price: Number(priceForm.price), ...locationParam });
+      setPriceForm({ testId: '', price: '' });
+      loadAll();
+      loadLocationPrices();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to set price');
+    }
   }
 
   async function handleTestPreview(e) {
     e.preventDefault();
-    if (!testFile) return;
+    setTestUploadMessage('');
+    if (!testFile) { setTestUploadMessage('Choose an Excel/CSV file first.'); return; }
     const formData = new FormData();
     formData.append('file', testFile);
-    const { data } = await api.post('/masters/client-test-price/upload/preview', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    setTestPreview(data);
+    try {
+      const { data } = await api.post('/masters/client-test-price/upload/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setTestPreview(data);
+    } catch (err) {
+      setTestPreview(null);
+      setTestUploadMessage(err.response?.data?.message || 'Could not read the file');
+    }
   }
 
   async function handleTestCommit() {
     const rows = testPreview.preview.filter((r) => r.valid).map((r) => ({ testCode: r.testCode, price: r.price }));
-    const { data } = await api.post('/masters/client-test-price/upload/commit', { rows });
-    setTestUploadMessage(`Uploaded: ${data.success.length} succeeded, ${data.errors.length} failed.`);
+    let data;
+    try {
+      ({ data } = await api.post('/masters/client-test-price/upload/commit', { rows, ...locationParam }));
+    } catch (err) {
+      setTestUploadMessage(err.response?.data?.message || 'Upload failed');
+      return;
+    }
+    setTestUploadMessage(`Uploaded${priceLocation ? ` for ${priceLocation.name}` : ''}: ${data.success.length} succeeded, ${data.errors.length} failed.`);
     setTestPreview(null);
     setTestFile(null);
     loadAll();
+    loadLocationPrices();
   }
 
   function toggleTestSelection(testId) {
@@ -204,6 +259,17 @@ export default function Masters() {
   const selectedTests = tests.filter((t) => packageForm.testIds.includes(t.id));
   const selectedTotal = selectedTests.reduce((sum, t) => sum + (priceByTestId.get(t.id) || 0), 0);
 
+  const locationPicker = locations.length > 1 && (
+    <label><span>Location</span>
+      <select value={priceLocationId} onChange={(e) => setPriceLocationId(e.target.value)} disabled={!!restrictedTo}>
+        {locations.map((l) => <option key={l.id} value={l.id}>{l.name}{l.isMain ? ' (Main)' : ''}</option>)}
+      </select>
+    </label>
+  );
+  const shownPrices = locationPrices || prices;
+  // A branch's columns appear once its own price list has loaded.
+  const branchShown = branchSelected && !!locationPrices;
+
   return (
     <div className="card masters-card">
       <div className="masters-head">
@@ -268,6 +334,7 @@ export default function Masters() {
       {tab === 'prices' && (
         <>
           <form onSubmit={handleSetPrice} className="masters-row">
+            {locationPicker}
             <div className="grow"><span className="field-label">Test</span>
               <SearchSelect
                 options={tests.map((t) => ({ value: t.id, label: `${t.testCode} — ${t.testName}` }))}
@@ -280,15 +347,36 @@ export default function Masters() {
             <button type="submit" disabled={!priceForm.testId}>Set Price</button>
             <input className="masters-search" placeholder="Search price list…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </form>
+          {error && <p className="error-text">{error}</p>}
+          {branchSelected && (
+            <p className="cell-sub">
+              {priceLocation.name} uses the Main location's price for every test unless you set its own price here.
+            </p>
+          )}
           <div className="masters-table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Test Code</th><th>Test Name</th><th style={{ textAlign: 'right' }}>Price</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Test Code</th><th>Test Name</th><th style={{ textAlign: 'right' }}>Price</th>{branchShown && <th style={{ textAlign: 'right' }}>Main Price</th>}<th>Status</th><th></th></tr></thead>
               <tbody>
-                {prices.filter((p) => p.TestMaster && matches(p.TestMaster.testCode, p.TestMaster.testName)).map((p) => (
+                {shownPrices.filter((p) => p.TestMaster && matches(p.TestMaster.testCode, p.TestMaster.testName)).map((p) => (
                   <tr key={p.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{p.TestMaster.testCode}</td>
                     <td>{p.TestMaster.testName}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{p.price}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      ₹{p.price}
+                      {branchShown && (p.ownPrice
+                        ? <span className="badge PAID" style={{ marginLeft: 6 }} title={`${priceLocation.name}'s own price`}>Own</span>
+                        : <span className="cell-sub" style={{ marginLeft: 6 }}>(Main)</span>)}
+                    </td>
+                    {branchShown && (
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        ₹{p.mainPrice}
+                        {p.ownPrice && (
+                          <button type="button" className="secondary" style={{ marginLeft: 6, padding: '2px 8px', fontSize: 12 }} onClick={() => handleResetToMain(p.testId)}>
+                            Use Main
+                          </button>
+                        )}
+                      </td>
+                    )}
                     <td style={{ whiteSpace: 'nowrap' }}>{testStatus(p.TestMaster)}</td>
                     <td>{testActions(p.TestMaster)}</td>
                   </tr>
@@ -375,9 +463,10 @@ export default function Masters() {
         <div className="bulk-grid">
           <div className="bulk-box">
             <div className="pkg-form-title">Test prices</div>
-            <p className="cell-sub">Excel columns: TEST_CODE, TEST_NAME, PRICE</p>
+            <p className="cell-sub">Excel columns: TEST_CODE, TEST_NAME, PRICE{branchSelected ? ` - uploads set ${priceLocation.name}'s own prices` : ''}</p>
+            {locationPicker && <div className="masters-row">{locationPicker}</div>}
             <form onSubmit={handleTestPreview} className="masters-row">
-              <button type="button" className="secondary" onClick={() => downloadFile('/masters/client-test-price/template', 'test-price-template.xlsx')}>
+              <button type="button" className="secondary" onClick={() => downloadFile(`/masters/client-test-price/template${branchSelected ? `?locationId=${priceLocation.id}` : ''}`, 'test-price-template.xlsx')}>
                 Template
               </button>
               <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setTestFile(e.target.files[0])} />

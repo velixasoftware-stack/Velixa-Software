@@ -195,7 +195,7 @@ export function AppLayout() {
     <div className="app-shell">
       <div className={`sidebar-overlay${navOpen ? ' open' : ''}`} onClick={() => setNavOpen(false)} />
       <aside className={`sidebar${navOpen ? ' open' : ''}`}>
-        <SidebarBrand title={auth?.client?.clientName} subtitle="LIMS" />
+        <SidebarBrand title={auth?.client?.clientName} subtitle={auth?.client?.multiLocation && auth.client.locationName ? `LIMS · ${auth.client.locationName}` : 'LIMS'} />
         <nav onClick={() => setNavOpen(false)}>
           <NavLink to="/app" end><Icon name="home" size={17} /><span>Home</span></NavLink>
           {groupNavLinks(links).map((g) => (
@@ -223,6 +223,9 @@ export function AppLayout() {
               <Icon name="menu" size={18} />
             </button>
             <span className={`badge ${auth?.client?.paymentStatus}`}>{auth?.client?.paymentStatus}</span>
+            {auth?.client?.multiLocation && auth.client.locationName && (
+              <span className="topbar-location" title="The location you are logged in at"><Icon name="pin" size={14} />{auth.client.locationName}</span>
+            )}
           </div>
           <TopbarClock />
           <div className="topbar-right">

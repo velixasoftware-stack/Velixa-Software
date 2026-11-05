@@ -24,7 +24,13 @@ export default function ClientDetail() {
   const [prices, setPrices] = useState([]);
   const [marketingPersons, setMarketingPersons] = useState([]);
   const [priceForm, setPriceForm] = useState({ testId: '', price: '' });
-  const [newUser, setNewUser] = useState({ username: '', password: '', name: '', department: '', designation: '', roleNames: ['FRONT_OFFICE'] });
+  const [newUser, setNewUser] = useState({ username: '', password: '', name: '', department: '', designation: '', roleNames: ['FRONT_OFFICE'], locationId: 'ALL' });
+  // Locations (branches) of this client; the first one added is Main.
+  const [locations, setLocations] = useState([]);
+  const [newLocation, setNewLocation] = useState({ name: '', address: '' });
+  const [locationEdits, setLocationEdits] = useState({}); // { [locationId]: { name, address } }
+  const [locationMessage, setLocationMessage] = useState('');
+  const [locationError, setLocationError] = useState('');
   const [userRoleEdits, setUserRoleEdits] = useState({});
   const [userProfileEdits, setUserProfileEdits] = useState({}); // { [userId]: { department, designation } }
   const [signatureUploading, setSignatureUploading] = useState(null); // userId currently uploading
@@ -55,14 +61,17 @@ export default function ClientDetail() {
   const [roleScreenError, setRoleScreenError] = useState('');
 
   async function load() {
-    const [clientRes, testsRes, pricesRes, marketingRes, roleScreensRes, revenueRes] = await Promise.all([
+    const [clientRes, testsRes, pricesRes, marketingRes, roleScreensRes, revenueRes, locationsRes] = await Promise.all([
       api.get(`/clients/${id}`),
       isAdmin ? api.get('/admin/masters/tests') : Promise.resolve({ data: [] }),
       api.get(`/clients/${id}/test-prices`),
       api.get('/clients/marketing-persons'),
       isAdmin ? api.get(`/clients/${id}/role-screens`) : Promise.resolve({ data: { roles: [], defaults: {}, effective: {} } }),
       isAdmin ? api.get(`/clients/${id}/revenue`) : Promise.resolve({ data: null }),
+      api.get(`/clients/${id}/locations`),
     ]);
+    setLocations(locationsRes.data);
+    setLocationEdits({});
     setMarketingPersons(marketingRes.data);
     setRoleScreenRoles(roleScreensRes.data.roles);
     setRoleScreenDefaults(roleScreensRes.data.defaults);
@@ -166,7 +175,7 @@ export default function ClientDetail() {
     }
     try {
       await api.post(`/clients/${id}/users`, newUser);
-      setNewUser({ username: '', password: '', name: '', department: '', designation: '', roleNames: ['FRONT_OFFICE'] });
+      setNewUser({ username: '', password: '', name: '', department: '', designation: '', roleNames: ['FRONT_OFFICE'], locationId: 'ALL' });
       load();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create user');
@@ -263,6 +272,45 @@ export default function ClientDetail() {
     }
   }
 
+  async function handleAddLocation(e) {
+    e.preventDefault();
+    setLocationError('');
+    setLocationMessage('');
+    try {
+      const { data } = await api.post(`/clients/${id}/locations`, newLocation);
+      setNewLocation({ name: '', address: '' });
+      setLocationMessage(data.isMain
+        ? `${data.name} added as the Main location.`
+        : `${data.name} added. It uses the Main location's prices until the client sets its own.`);
+      load();
+    } catch (err) {
+      setLocationError(err.response?.data?.message || 'Failed to add location');
+    }
+  }
+
+  async function handleUpdateLocation(locationId, changes) {
+    setLocationError('');
+    setLocationMessage('');
+    try {
+      await api.put(`/clients/${id}/locations/${locationId}`, changes);
+      setLocationMessage('Location saved.');
+      load();
+    } catch (err) {
+      setLocationError(err.response?.data?.message || 'Failed to save location');
+    }
+  }
+
+  // Saves straight away, like the role ticks - 'ALL' or a location id.
+  async function handleSetUserLocation(userId, locationId) {
+    setError('');
+    try {
+      await api.put(`/clients/${id}/users/${userId}`, { locationId });
+      load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to change location');
+    }
+  }
+
   async function handleSetPrice(e) {
     e.preventDefault();
     setError('');
@@ -276,6 +324,10 @@ export default function ClientDetail() {
   }
 
   const billableUsers = users.filter((u) => !u.isSystemUser);
+  const activeLocations = locations.filter((l) => l.active);
+  // Location access only matters once the client has more than one location.
+  const multiLocation = activeLocations.length > 1;
+  const userLocationValue = (u) => (u.allLocations || !u.locationId ? 'ALL' : String(u.locationId));
 
   if (!client || !form) return <p>Loading…</p>;
 
@@ -437,6 +489,49 @@ export default function ClientDetail() {
       )}
 
       <div className="card">
+        <h3>Locations</h3>
+        <p style={{ fontSize: 13, color: '#64748b', marginTop: -8 }}>
+          With more than one active location, the client's login screen asks for a Location after the Client Code.
+          The first location is Main: its prices are the client's own prices, and other locations use them until the
+          client sets their own under Masters &amp; Pricing → Price Updation.
+        </p>
+        <form onSubmit={handleAddLocation} className="form-grid" style={{ alignItems: 'end' }}>
+          <label><span>Location Name</span><input value={newLocation.name} onChange={(e) => setNewLocation((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Ameerpet Branch" required /></label>
+          <label><span>Address (optional)</span><input value={newLocation.address} onChange={(e) => setNewLocation((f) => ({ ...f, address: e.target.value }))} /></label>
+          <button type="submit">Add Location</button>
+        </form>
+        {locationMessage && <p style={{ color: '#166534' }}>{locationMessage}</p>}
+        {locationError && <p className="error-text">{locationError}</p>}
+        <table>
+          <thead><tr><th>Location</th><th>Address</th><th>Type</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {locations.map((l) => {
+              const edit = locationEdits[l.id];
+              const value = edit ?? { name: l.name, address: l.address || '' };
+              const setEdit = (changes) => setLocationEdits((all) => ({ ...all, [l.id]: { ...value, ...changes } }));
+              return (
+                <tr key={l.id}>
+                  <td><input style={{ minWidth: 160 }} value={value.name} onChange={(e) => setEdit({ name: e.target.value })} /></td>
+                  <td><input style={{ minWidth: 180 }} value={value.address} onChange={(e) => setEdit({ address: e.target.value })} /></td>
+                  <td>{l.isMain ? <span className="badge PAID">Main</span> : 'Branch'}</td>
+                  <td>{l.active ? 'Active' : 'Inactive'}</td>
+                  <td><div style={{ display: 'flex', gap: 6 }}>
+                    {edit && <button type="button" onClick={() => handleUpdateLocation(l.id, edit)}>Save</button>}
+                    {!l.isMain && (
+                      <button type="button" className="secondary" onClick={() => handleUpdateLocation(l.id, { active: !l.active })}>
+                        {l.active ? 'Make Inactive' : 'Make Active'}
+                      </button>
+                    )}
+                  </div></td>
+                </tr>
+              );
+            })}
+            {locations.length === 0 && <tr><td colSpan={5}>No locations yet - this client works as a single location.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
         <h3>Users</h3>
         <form onSubmit={handleAddUser} className="form-grid" style={{ alignItems: 'end' }}>
           <label><span>Username</span><input value={newUser.username} onChange={(e) => setNewUser((f) => ({ ...f, username: e.target.value }))} required /></label>
@@ -444,13 +539,21 @@ export default function ClientDetail() {
           <label><span>Password</span><input type="password" value={newUser.password} onChange={(e) => setNewUser((f) => ({ ...f, password: e.target.value }))} required /></label>
           <label><span>Department</span><input value={newUser.department} onChange={(e) => setNewUser((f) => ({ ...f, department: e.target.value }))} placeholder="e.g. Laboratory" /></label>
           <label><span>Designation</span><input value={newUser.designation} onChange={(e) => setNewUser((f) => ({ ...f, designation: e.target.value }))} placeholder="e.g. Lab Technician" /></label>
+          {multiLocation && (
+            <label><span>Location</span>
+              <select value={newUser.locationId} onChange={(e) => setNewUser((f) => ({ ...f, locationId: e.target.value }))}>
+                <option value="ALL">All locations</option>
+                {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.name} only</option>)}
+              </select>
+            </label>
+          )}
           <div><span>Roles</span>
             <RoleCheckboxes value={newUser.roleNames} onChange={(roleNames) => setNewUser((f) => ({ ...f, roleNames }))} />
           </div>
           <button type="submit">Add User</button>
         </form>
         <table>
-          <thead><tr><th>Username</th><th>Name</th><th>Department</th><th>Designation</th><th>Signature</th><th>Roles</th><th>Active</th><th></th></tr></thead>
+          <thead><tr><th>Username</th><th>Name</th><th>Department</th><th>Designation</th>{multiLocation && <th>Location</th>}<th>Signature</th><th>Roles</th><th>Active</th><th></th></tr></thead>
           <tbody>
             {users.map((u) => {
               const profile = profileForUser(u);
@@ -476,6 +579,17 @@ export default function ClientDetail() {
                       onChange={(e) => setUserProfileEdits((edits) => ({ ...edits, [u.id]: { ...profile, designation: e.target.value } }))}
                     />
                   </td>
+                  {multiLocation && (
+                    <td>
+                      <select style={{ minWidth: 130 }} value={userLocationValue(u)} onChange={(e) => handleSetUserLocation(u.id, e.target.value)}>
+                        <option value="ALL">All locations</option>
+                        {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.name} only</option>)}
+                        {!u.allLocations && u.locationId && !activeLocations.some((l) => l.id === u.locationId) && (
+                          <option value={u.locationId}>{locations.find((l) => l.id === u.locationId)?.name || 'Location'} (inactive)</option>
+                        )}
+                      </select>
+                    </td>
+                  )}
                   <td>
                     {u.signaturePath && <img src={u.signaturePath} alt="Signature" style={{ height: 24, display: 'block', marginBottom: 4 }} />}
                     <input
@@ -511,7 +625,7 @@ export default function ClientDetail() {
                 </tr>
               );
             })}
-            {users.length === 0 && <tr><td colSpan={8}>No users yet.</td></tr>}
+            {users.length === 0 && <tr><td colSpan={multiLocation ? 9 : 8}>No users yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -563,6 +677,11 @@ export default function ClientDetail() {
 
       <div className="card">
         <h3>Client-wise Test Pricing</h3>
+        {locations.length > 1 && (
+          <p style={{ fontSize: 13, color: '#64748b', marginTop: -8 }}>
+            These are the Main location's prices. Other locations use them unless the client sets a location's own price.
+          </p>
+        )}
         <form onSubmit={handleSetPrice} className="form-grid" style={{ alignItems: 'end' }}>
           <label><span>Test</span>
             <select value={priceForm.testId} onChange={(e) => setPriceForm((f) => ({ ...f, testId: e.target.value }))} required>

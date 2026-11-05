@@ -224,10 +224,38 @@ const ClientUser = sequelize.define('ClientUser', {
   // login and stamped into the JWT, so logging in again elsewhere evicts
   // whatever session was active before (see auth.middleware.js).
   currentSessionId: { type: DataTypes.STRING, allowNull: true },
+  // Where this user may work when the client has several locations: every
+  // location (allLocations) or just the one in locationId.
+  allLocations: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   ...AUDIT_FIELDS,
 }, {
   tableName: 'client_user',
   indexes: [{ unique: true, fields: ['clientId', 'username'] }],
+});
+
+// A branch of a client, set up by Chief Admin. The first one created is the
+// Main location: its test prices are the client's own (ClientTestPrice); any
+// other location uses those too unless it has its own price below.
+const ClientLocation = sequelize.define('ClientLocation', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  address: { type: DataTypes.STRING },
+  isMain: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  ...AUDIT_FIELDS,
+}, {
+  tableName: 'client_location',
+  indexes: [{ unique: true, fields: ['clientId', 'name'] }],
+});
+
+// A non-Main location's own price for a test, replacing the Main price there.
+const ClientLocationTestPrice = sequelize.define('ClientLocationTestPrice', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  ...AUDIT_FIELDS,
+}, {
+  tableName: 'client_location_test_price',
+  indexes: [{ unique: true, fields: ['locationId', 'testId'] }],
 });
 
 // ---- MASTERS ------------------------------------------------------------
@@ -750,6 +778,19 @@ Role.belongsToMany(ClientUser, { through: 'client_user_role', foreignKey: 'roleI
 ChiefAdmin.belongsToMany(Role, { through: 'chief_admin_role', foreignKey: 'chiefAdminId', otherKey: 'roleId' });
 Role.belongsToMany(ChiefAdmin, { through: 'chief_admin_role', foreignKey: 'roleId', otherKey: 'chiefAdminId' });
 
+Client.hasMany(ClientLocation, { foreignKey: 'clientId', onDelete: 'CASCADE' });
+ClientLocation.belongsTo(Client, { foreignKey: 'clientId' });
+ClientLocation.hasMany(ClientUser, { foreignKey: 'locationId' });
+ClientUser.belongsTo(ClientLocation, { foreignKey: 'locationId' });
+ClientLocation.hasMany(ClientLocationTestPrice, { foreignKey: 'locationId', onDelete: 'CASCADE' });
+ClientLocationTestPrice.belongsTo(ClientLocation, { foreignKey: 'locationId' });
+TestMaster.hasMany(ClientLocationTestPrice, { foreignKey: 'testId', onDelete: 'CASCADE' });
+ClientLocationTestPrice.belongsTo(TestMaster, { foreignKey: 'testId' });
+ClientLocation.hasMany(Bill, { foreignKey: 'locationId' });
+Bill.belongsTo(ClientLocation, { foreignKey: 'locationId' });
+ClientLocation.hasMany(Sample, { foreignKey: 'locationId' });
+Sample.belongsTo(ClientLocation, { foreignKey: 'locationId' });
+
 Client.hasMany(ClientTestPrice, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 ClientTestPrice.belongsTo(Client, { foreignKey: 'clientId' });
 
@@ -941,6 +982,8 @@ module.exports = {
   Role,
   RolePermission,
   ClientUser,
+  ClientLocation,
+  ClientLocationTestPrice,
   TestGroup,
   StoredFile,
   PatientTitle,

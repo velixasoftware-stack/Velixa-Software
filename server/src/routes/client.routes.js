@@ -10,6 +10,7 @@ const priceCtrl = require('../controllers/clientTestPrice.controller');
 const roleScreenCtrl = require('../controllers/roleScreen.controller');
 const paymentCtrl = require('../controllers/payment.controller');
 const resetCtrl = require('../controllers/clientDataReset.controller');
+const locationCtrl = require('../controllers/clientLocation.controller');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -53,6 +54,10 @@ router.post('/:clientId/free-days', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMI
 router.get('/:clientId/data-summary', requireAdminRole, resetCtrl.getDataSummary);
 router.get('/:clientId/data-export', requireAdminRole, resetCtrl.exportClientData);
 router.post('/:clientId/data-reset', requireAdminRole, resetCtrl.resetClientData);
+
+router.get('/:clientId/locations', assignedClientOnly, locationCtrl.listLocations);
+router.post('/:clientId/locations', requireAdminRole, locationCtrl.createLocation);
+router.put('/:clientId/locations/:locationId', requireAdminRole, locationCtrl.updateLocation);
 
 router.post('/:clientId/users', requireAdminRole, userCtrl.createUser);
 router.get('/:clientId/users', assignedClientOnly, userCtrl.listUsers);

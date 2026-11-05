@@ -4,6 +4,7 @@ const {
   sequelize, Sample, BillItem, TestMaster, ParameterMaster, Result, Report, Bill, Patient, Client,
   ReferralDoctor, Payor, ClientUser, ClientParameterTrend, ClientTestSpecimen,
 } = require('../models');
+const { locationWhere } = require('../utils/location');
 const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange, printedRangeText } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
@@ -92,7 +93,7 @@ async function withResolvedRanges(sampleJson) {
 async function listSamples(req, res) {
   const { clientId } = req.user;
   const { status } = req.query;
-  const where = { clientId };
+  const where = { clientId, ...locationWhere(req) };
   if (status) where.status = status;
 
   const samples = await Sample.findAll({ where, include: buildSampleIncludes(clientId), order: [['createdAt', 'DESC']] });
@@ -624,6 +625,7 @@ async function getPendingTests(req, res) {
   const samples = await Sample.findAll({
     where: {
       clientId,
+      ...locationWhere(req),
       status: { [Op.in]: PENDING_STATUS_LABEL[status] ? [status] : Object.keys(PENDING_STATUS_LABEL) },
     },
     include: [{

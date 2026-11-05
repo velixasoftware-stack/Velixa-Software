@@ -26,6 +26,7 @@ const PATHS = {
   percent: 'M19 5L5 19M7.5 7a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM16.5 22a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
   trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
   check: 'M5 12l5 5L20 7',
+  pin: 'M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
 };
 
 export function Icon({ name, size = 20, ...rest }) {

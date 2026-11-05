@@ -86,8 +86,9 @@ export function AuthProvider({ children }) {
     return data;
   }
 
-  async function loginClientUser(clientCode, username, password) {
-    const { data } = await api.post('/auth/login', { clientCode, username, password });
+  // locationId: the login screen's Location pick (only when the client has several).
+  async function loginClientUser(clientCode, username, password, locationId) {
+    const { data } = await api.post('/auth/login', { clientCode, username, password, locationId: locationId || undefined });
     persist(data);
     if (data.client?.paymentStatus !== 'PAID') setPaymentRequired(true);
     return data;

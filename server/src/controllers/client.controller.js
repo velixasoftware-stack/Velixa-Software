@@ -1,6 +1,9 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { Client, ClientSubscription, ClientUser, Role, ChiefAdmin, Bill, ClientPayment, sequelize } = require('../models');
+const {
+  Client, ClientSubscription, ClientUser, ClientLocation, Role, ChiefAdmin, Bill, ClientPayment, sequelize,
+} = require('../models');
+const { activeLocations, resolveLoginLocation, locationInfo } = require('../utils/location');
 const { Op, fn, col } = require('sequelize');
 const { calculatePlanAmount } = require('../utils/pricing');
 const { signToken } = require('../utils/jwt');
@@ -126,7 +129,7 @@ async function createInitialSubscription(client, t, range, free = false) {
 async function createClient(req, res) {
   const {
     clientName, mobile, email, address, salesPerson, marketingPersonPrice, monthlyAmount: monthlyAmountOverride,
-    startDate, endDate, users, qrPaymentRequired, isFreeTrial,
+    startDate, endDate, users, qrPaymentRequired, isFreeTrial, locations,
   } = req.body;
 
   if (!clientName || !startDate || !endDate) {
@@ -141,6 +144,19 @@ async function createClient(req, res) {
   const clientCode = await generateClientCode('CHIEF_ADMIN');
   // A client a MARKETING user onboards is always assigned to that user.
   const assignedSalesPerson = isMarketingOnly(req) ? req.user.username : salesPerson;
+
+  // Optional branches, in order - the first is Main. Users may be held to one
+  // of them by name (locationName); none = all locations.
+  const locationList = (Array.isArray(locations) ? locations : [])
+    .map((l) => ({ name: (l?.name || '').toString().trim(), address: (l?.address || '').toString().trim() || null }))
+    .filter((l) => l.name);
+  const locationNames = new Set();
+  for (const l of locationList) {
+    if (locationNames.has(l.name.toLowerCase())) {
+      return res.status(400).json({ message: `Location "${l.name}" is entered more than once` });
+    }
+    locationNames.add(l.name.toLowerCase());
+  }
 
   const userList = Array.isArray(users) ? users : [];
   const seenUsernames = new Set();
@@ -161,6 +177,10 @@ async function createClient(req, res) {
       return res.status(400).json({ message: `Username "${u.username}" is entered more than once - each user needs a different username.` });
     }
     seenUsernames.add(key);
+    u.locationName = (u.locationName || '').toString().trim();
+    if (u.locationName && !locationNames.has(u.locationName.toLowerCase())) {
+      return res.status(400).json({ message: `User "${u.username}": location "${u.locationName}" is not in the locations list` });
+    }
   }
 
   const marketingFee = Number(marketingPersonPrice) || 0;
@@ -190,6 +210,12 @@ async function createClient(req, res) {
 
       await createInitialSubscription(client, t, { from: startDate, to: endDate }, !!isFreeTrial);
 
+      const locationIdByName = new Map();
+      for (const [i, l] of locationList.entries()) {
+        const created = await ClientLocation.create({ clientId: client.id, name: l.name, address: l.address, isMain: i === 0 }, { transaction: t });
+        locationIdByName.set(l.name.toLowerCase(), created.id);
+      }
+
       const createdUsers = [];
       for (const u of userList) {
         const roles = await Role.findAll({ where: { name: u.roleNames }, transaction: t });
@@ -199,9 +225,12 @@ async function createClient(req, res) {
           throw new Error(`Unknown role(s): ${missing.join(', ')}`);
         }
         const passwordHash = await bcrypt.hash(u.password, 10);
+        // Held to one location only when the client really has several.
+        const ownLocationId = locationList.length > 1 && u.locationName ? locationIdByName.get(u.locationName.toLowerCase()) : null;
         const created = await ClientUser.create({
           clientId: client.id, username: u.username, passwordHash, name: u.name,
           department: u.department, designation: u.designation,
+          allLocations: !ownLocationId, locationId: ownLocationId,
         }, { transaction: t });
         await created.setRoles(roles, { transaction: t });
         createdUsers.push({ id: created.id, username: created.username, roles: roles.map((r) => r.name) });
@@ -227,7 +256,7 @@ async function createClient(req, res) {
         systemUserCredentials = { username: 'chiefadmin', password: systemPassword };
       }
 
-      return { client, users: createdUsers, systemUser: systemUserCredentials };
+      return { client, users: createdUsers, locations: locationList.map((l) => l.name), systemUser: systemUserCredentials };
     });
 
     return res.status(201).json(result);
@@ -373,7 +402,8 @@ async function getClient(req, res) {
 // their OWN username/password into the ordinary client-login form, with
 // that client's Client Code, instead of needing to know/reset that specific
 // client's separate chiefadmin support password).
-async function mintSystemUserSession(client) {
+// locationId: the location picked on the login screen (Main when none).
+async function mintSystemUserSession(client, locationId = null) {
   let systemUser = await ClientUser.findOne({ where: { clientId: client.id, isSystemUser: true } });
   if (!systemUser) {
     const adminRole = await Role.findOne({ where: { name: 'ADMIN' } });
@@ -387,6 +417,10 @@ async function mintSystemUserSession(client) {
   }
   if (!systemUser.active) return { error: "This client's support login has been deactivated" };
 
+  const locations = await activeLocations(client.id);
+  const picked = locationId ? await resolveLoginLocation(client.id, null, locationId) : { location: locations[0] || null };
+  if (picked.error) return { error: picked.error };
+
   const roles = (await systemUser.getRoles()).map((r) => r.name);
   // A fresh session id evicts any session already active for this support
   // login elsewhere, same single-session rule every other login follows.
@@ -394,6 +428,7 @@ async function mintSystemUserSession(client) {
   await systemUser.update({ currentSessionId: sessionId });
   const token = signToken({
     type: 'CLIENT_USER', id: systemUser.id, clientId: client.id, clientCode: client.clientCode, roles, sessionId,
+    locationId: picked.location?.id || null,
   });
 
   // Required lazily (not at module top) to avoid a require() cycle:
@@ -408,6 +443,7 @@ async function mintSystemUserSession(client) {
       id: client.id, clientCode: client.clientCode, clientName: client.clientName,
       paymentStatus, allowBillCancellationRefund: client.allowBillCancellationRefund,
       qrPaymentRequired: client.qrPaymentRequired,
+      ...(await locationInfo(client.id, picked.location)),
     },
   };
 }

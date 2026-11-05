@@ -10,6 +10,15 @@ const loginLimiter = rateLimit({
   message: { message: 'Too many login attempts. Please wait a few minutes and try again.' },
 });
 
+// The login screen looks up a client's locations as the Client Code is typed.
+const locationLookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please wait a few minutes and try again.' },
+});
+
 // Self-registration is public and creates a new client - keep it tight to
 // deter signup spam/flooding.
 const signupLimiter = rateLimit({
@@ -30,4 +39,4 @@ const publicReportLimiter = rateLimit({
   message: { message: 'Too many requests. Please wait a few minutes and try again.' },
 });
 
-module.exports = { loginLimiter, signupLimiter, publicReportLimiter };
+module.exports = { locationLookupLimiter, loginLimiter, signupLimiter, publicReportLimiter };

@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { ClientUser, Role, Client } = require('../models');
+const { ClientUser, Role, Client, ClientLocation } = require('../models');
 const { calculatePlanAmount } = require('../utils/pricing');
 const { isMarketingOnly } = require('../middleware/auth.middleware');
 
@@ -11,6 +11,22 @@ async function resolveRoles(roleNames) {
   const missing = roleNames.filter((name) => !found.has(name));
   if (missing.length) throw new Error(`Unknown role(s): ${missing.join(', ')}`);
   return roles;
+}
+
+/**
+ * Reads the user's location access from the request body: locationId 'ALL'
+ * (or empty) = every location, otherwise one of this client's locations.
+ * Returns {} when the body doesn't mention it, { error } when it's invalid.
+ */
+async function locationAccess(clientId, body) {
+  if (body.locationId === undefined) return {};
+  if (body.locationId === 'ALL' || body.locationId === '' || body.locationId === null) {
+    return { allLocations: true, locationId: null };
+  }
+  const location = await ClientLocation.findOne({ where: { id: Number(body.locationId) || 0, clientId } });
+  if (!location) return { error: 'Selected location not found for this client' };
+  if (!location.active) return { error: `${location.name} is inactive` };
+  return { allLocations: false, locationId: location.id };
 }
 
 // POST /api/clients/:clientId/users  (Chief Admin or client ADMIN)
@@ -37,9 +53,11 @@ async function createUser(req, res) {
 
   const existing = await ClientUser.findOne({ where: { clientId, username } });
   if (existing) return res.status(409).json({ message: 'Username already exists for this client' });
+  const { error: locationError, ...access } = await locationAccess(clientId, req.body);
+  if (locationError) return res.status(400).json({ message: locationError });
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await ClientUser.create({ clientId, username, passwordHash, name, email, mobile, department, designation });
+  const user = await ClientUser.create({ clientId, username, passwordHash, name, email, mobile, department, designation, ...access });
   await user.setRoles(roles);
 
   // Basic plan covers 2 users at ₹1500/month; each user beyond that adds ₹500/month,
@@ -70,6 +88,9 @@ async function updateUser(req, res) {
 
   const { name, email, mobile, department, designation, active, roleNames, password } = req.body;
   const updates = { name, email, mobile, department, designation, active };
+  const { error: locationError, ...access } = await locationAccess(user.clientId, req.body);
+  if (locationError) return res.status(400).json({ message: locationError });
+  Object.assign(updates, access);
 
   if (Array.isArray(roleNames)) {
     if (roleNames.length === 0) return res.status(400).json({ message: 'At least one role is required' });

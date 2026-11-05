@@ -2,8 +2,9 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize, Bill, BillItem, Refund, BillDiscount, DuePayment, ClientTestPrice, TestMaster, Sample, Report, Patient,
-  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName, Package, PayorInvoice, PayorInvoiceItem,
+  ReferralDoctor, Client, Payor, PayorTestPrice, ClientTestShortName, Package, PayorInvoice, PayorInvoiceItem, ClientLocation,
 } = require('../models');
+const { locationWhere, sessionLocationId, applyLocationPrices } = require('../utils/location');
 const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
@@ -95,10 +96,12 @@ async function createBill(req, res) {
     }
   }
 
-  const prices = testIdList.length === 0 ? [] : await ClientTestPrice.findAll({
+  // The bill's location - its test prices are that location's (Main's unless it has its own).
+  const locationId = await sessionLocationId(req);
+  const prices = testIdList.length === 0 ? [] : await applyLocationPrices(await ClientTestPrice.findAll({
     where: { clientId, testId: testIdList },
     include: [TestMaster],
-  });
+  }), locationId);
   if (prices.length !== testIdList.length) {
     return res.status(400).json({ message: 'Price not configured for one or more selected tests' });
   }
@@ -138,7 +141,7 @@ async function createBill(req, res) {
       return res.status(400).json({ message: 'One or more selected packages are not available' });
     }
     const pkgTestIds = packages.flatMap((pkg) => pkg.TestMasters.map((t) => t.id));
-    const pkgTestPrices = await ClientTestPrice.findAll({ where: { clientId, testId: pkgTestIds } });
+    const pkgTestPrices = await applyLocationPrices(await ClientTestPrice.findAll({ where: { clientId, testId: pkgTestIds } }), locationId);
     const stdPriceByTestId = new Map(pkgTestPrices.map((p) => [p.testId, p]));
 
     // A test may appear on a bill only once - not both on its own and in a
@@ -252,7 +255,7 @@ async function createBill(req, res) {
   try {
     const result = await sequelize.transaction(async (t) => {
       const bill = await Bill.create({
-        clientId, patientId: patient.id, createdByUserId: userId,
+        clientId, patientId: patient.id, createdByUserId: userId, locationId,
         referredDoctorId: doctor?.id || null,
         payorId: payor?.id || null,
         billNo: await generateBillNo(clientId, t),
@@ -280,7 +283,7 @@ async function createBill(req, res) {
 
         const manualBarcode = barcodes?.[line.testId]?.toString().trim();
         const sample = await Sample.create({
-          clientId, billItemId: billItem.id,
+          clientId, billItemId: billItem.id, locationId,
           barcode: manualBarcode || generateBarcode(),
           // A barcode entered at billing time means the sample was already
           // physically labelled/collected right then - skip straight to
@@ -341,6 +344,7 @@ async function addBillItem(req, res) {
 
   const priceRow = await ClientTestPrice.findOne({ where: { clientId, testId }, include: [TestMaster] });
   if (!priceRow) return res.status(400).json({ message: 'Price not configured for this test' });
+  await applyLocationPrices([priceRow], bill.locationId); // the price where this bill was made
   if (!isBillableForClient(priceRow, priceRow.TestMaster)) return res.status(400).json({ message: 'This test is inactive and can\'t be billed' });
 
   const existingActive = await BillItem.findOne({ where: { billId: bill.id, testId, status: 'ACTIVE' } });
@@ -358,7 +362,7 @@ async function addBillItem(req, res) {
     }, { transaction: t });
 
     const sample = await Sample.create({
-      clientId, billItemId: billItem.id, barcode: generateBarcode(), status: 'PENDING_COLLECTION',
+      clientId, billItemId: billItem.id, locationId: bill.locationId, barcode: generateBarcode(), status: 'PENDING_COLLECTION',
     }, { transaction: t });
     await Report.create({ sampleId: sample.id, status: 'PENDING' }, { transaction: t });
 
@@ -631,8 +635,8 @@ async function cancelPostBillingDiscount(req, res) {
 async function listBills(req, res) {
   const { clientId } = req.user;
   const bills = await Bill.findAll({
-    where: { clientId },
-    include: billIncludes,
+    where: { clientId, ...locationWhere(req) },
+    include: [...billIncludes, { model: ClientLocation, attributes: ['name'] }],
     order: [['createdAt', 'DESC']],
     limit: 200,
   });
@@ -653,6 +657,7 @@ async function listBills(req, res) {
     dueAmount: b.dueAmount,
     paymentMode: b.paymentMode,
     createdAt: b.createdAt,
+    location: b.ClientLocation?.name || null,
     patient: b.Patient ? { id: b.Patient.id, umr: b.Patient.umr, title: b.Patient.title, name: b.Patient.name, mobile: b.Patient.mobile } : null,
     referredDoctor: b.ReferralDoctor?.name || null,
     payor: b.Payor?.name || null,
@@ -690,6 +695,7 @@ async function listTestPrices(req, res) {
     ClientTestShortName.findAll({ where: { clientId } }),
   ]);
   const shortNameByTestId = new Map(shortNames.map((s) => [s.testId, s.shortName]));
+  await applyLocationPrices(prices, await sessionLocationId(req)); // this location's prices
   const data = prices.filter((p) => isBillableForClient(p, p.TestMaster)).map((p) => ({ ...p.toJSON(), shortName: shortNameByTestId.get(p.testId) || null }));
   return res.json(data);
 }

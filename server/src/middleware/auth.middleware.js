@@ -41,7 +41,15 @@ async function authenticate(req, res, next) {
     if (user.currentSessionId !== payload.sessionId) {
       return res.status(401).json({ message: 'You have been logged out because this account signed in elsewhere' });
     }
-    req.user = { ...payload, roles: user.Roles.map((r) => r.name) };
+    // A single-location user always works at (and sees only) their own
+    // location, re-read here so a change by Chief Admin applies at once.
+    const ownLocation = !user.allLocations && user.locationId ? user.locationId : null;
+    req.user = {
+      ...payload,
+      roles: user.Roles.map((r) => r.name),
+      locationId: ownLocation || payload.locationId || null,
+      locationFilter: ownLocation,
+    };
     return runWithActor(`${user.username} (${user.Client.clientCode})`, next);
   }
 

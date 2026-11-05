@@ -7,6 +7,7 @@ const { syncClientPaymentStatus } = require('./subscription.controller');
 const { createInitialSubscription, generateClientCode, mintSystemUserSession } = require('./client.controller');
 const { calculatePlanAmount } = require('../utils/pricing');
 const { sendEmail, sendWhatsApp, getTemplate, renderTemplate } = require('../utils/notify');
+const { activeLocations, resolveLoginLocation, locationInfo } = require('../utils/location');
 
 // POST /api/auth/chief-admin/login
 async function chiefAdminLogin(req, res) {
@@ -33,9 +34,21 @@ async function chiefAdminLogin(req, res) {
   });
 }
 
-// POST /api/auth/login  { clientCode, username, password }
+// GET /api/auth/locations?clientCode=  (public - the login screen's Location
+// dropdown). Lists locations only when the client has more than one.
+async function listLoginLocations(req, res) {
+  const clientCode = (req.query.clientCode || '').toString().trim();
+  if (!clientCode) return res.json([]);
+  const client = await Client.findOne({ where: { clientCode: { [Op.iLike]: clientCode } }, attributes: ['id', 'active'] });
+  if (!client || !client.active) return res.json([]);
+  const locations = await activeLocations(client.id);
+  return res.json(locations.length > 1 ? locations.map((l) => ({ id: l.id, name: l.name, isMain: l.isMain })) : []);
+}
+
+// POST /api/auth/login  { clientCode, username, password, locationId }
+// locationId is needed only when the client has more than one location.
 async function clientUserLogin(req, res) {
-  const { clientCode, username, password } = req.body;
+  const { clientCode, username, password, locationId } = req.body;
   if (!clientCode || !username || !password) {
     return res.status(400).json({ message: 'clientCode, username and password are required' });
   }
@@ -66,13 +79,16 @@ async function clientUserLogin(req, res) {
     const isAssignedMarketing = chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'MARKETING')
       && (client.salesPerson || '').toLowerCase() === chiefAdmin.username.toLowerCase();
     if (isAdmin || isAssignedMarketing) {
-      const session = await mintSystemUserSession(client);
+      const session = await mintSystemUserSession(client, locationId);
       if (session.error) return res.status(400).json({ message: session.error });
       console.log(`Chief Admin "${chiefAdmin.username}" logged into client ${client.clientCode} (${client.clientName}) using their own credentials.`);
       return res.json(session);
     }
     return res.status(401).json({ message: 'Invalid credentials' });
   }
+
+  const { location, error: locationError } = await resolveLoginLocation(client.id, user, locationId);
+  if (locationError) return res.status(400).json({ message: locationError });
 
   const roles = user.Roles.map((r) => r.name);
 
@@ -88,6 +104,7 @@ async function clientUserLogin(req, res) {
     clientCode: client.clientCode,
     roles,
     sessionId,
+    locationId: location?.id || null,
   });
 
   // Re-derive from the subscription's Start Date/End Date so a lapsed window
@@ -110,9 +127,11 @@ async function clientUserLogin(req, res) {
       paymentStatus,
       allowBillCancellationRefund: client.allowBillCancellationRefund,
       qrPaymentRequired: client.qrPaymentRequired,
+      ...(await locationInfo(client.id, location)),
     },
   });
 }
+
 
 // POST /api/auth/self-register  (public - a lab signs itself up, no Chief Admin involved)
 // Body: { clientName, mobile, email, address, adminUsername, adminPassword, adminName }
@@ -199,4 +218,4 @@ async function logout(req, res) {
   return res.json({ message: 'Logged out.' });
 }
 
-module.exports = { chiefAdminLogin, clientUserLogin, selfRegister, changeOwnPassword, logout };
+module.exports = { chiefAdminLogin, clientUserLogin, listLoginLocations, selfRegister, changeOwnPassword, logout };

@@ -1,26 +1,81 @@
 const XLSX = require('xlsx');
 const {
-  ClientTestPrice, TestMaster, Client,
+  ClientTestPrice, TestMaster, Client, ClientLocation, ClientLocationTestPrice,
 } = require('../models');
 
 function resolveClientId(req) {
   return req.params.clientId || req.user.clientId;
 }
 
+/**
+ * The non-Main location whose own prices a client screen is working on
+ * (?locationId= or body.locationId), or null for the client's Main prices.
+ * A single-location user may only work on their own location.
+ */
+async function priceLocation(req, requestedLocationId) {
+  if (req.params.clientId) return { location: null }; // Chief Admin edits Main prices only
+  const requestedId = requestedLocationId || req.user.locationFilter; // a single-location user: their own
+  if (!requestedId) return { location: null };
+  const location = await ClientLocation.findOne({ where: { id: Number(requestedId) || 0, clientId: req.user.clientId } });
+  if (!location) return { error: 'Location not found' };
+  if (req.user.locationFilter && req.user.locationFilter !== location.id) {
+    return { error: 'You can change prices only for your own location' };
+  }
+  return { location: location.isMain ? null : location };
+}
+
 // GET /api/clients/:clientId/test-prices  (or /api/masters/client-test-price for a client admin)
+// ?locationId= shows that location's prices: its own where set (ownPrice),
+// otherwise Main's - each row also carries mainPrice.
 async function listPrices(req, res) {
+  const { location, error } = await priceLocation(req, req.query.locationId);
+  if (error) return res.status(400).json({ message: error });
   const prices = await ClientTestPrice.findAll({
     where: { clientId: resolveClientId(req) },
     include: [TestMaster],
   });
+  if (location) {
+    const own = await ClientLocationTestPrice.findAll({ where: { locationId: location.id } });
+    const ownByTestId = new Map(own.map((p) => [p.testId, p.price]));
+    for (const row of prices) {
+      row.setDataValue('mainPrice', row.price);
+      row.setDataValue('ownPrice', ownByTestId.has(row.testId));
+      if (ownByTestId.has(row.testId)) row.setDataValue('price', ownByTestId.get(row.testId));
+    }
+  }
   return res.json(prices);
 }
 
+/** Sets (or, with price null, removes) a location's own price for a test. */
+async function setLocationPrice(location, clientId, testId, price) {
+  const main = await ClientTestPrice.findOne({ where: { clientId, testId } });
+  if (!main) return { error: 'Set the Main location price for this test first' };
+  if (price == null) {
+    await ClientLocationTestPrice.destroy({ where: { locationId: location.id, testId } });
+    return { record: { testId, price: main.price, ownPrice: false } };
+  }
+  const [record] = await ClientLocationTestPrice.findOrCreate({ where: { locationId: location.id, testId }, defaults: { price } });
+  if (record.price != price) await record.update({ price });
+  return { record: { testId, price: record.price, ownPrice: true } };
+}
+
 // PUT /api/clients/:clientId/test-prices  { testId, price }
+// With locationId (a non-Main location): that location's own price, and
+// resetToMain: true goes back to the Main price there.
 async function setPrice(req, res) {
   const clientId = resolveClientId(req);
-  const { testId, price } = req.body;
+  const { testId, price, resetToMain } = req.body;
+  const { location, error } = await priceLocation(req, req.body.locationId);
+  if (error) return res.status(400).json({ message: error });
+  if (location && testId && resetToMain) {
+    const result = await setLocationPrice(location, clientId, testId, null);
+    return result.error ? res.status(400).json({ message: result.error }) : res.json(result.record);
+  }
   if (!testId || price == null) return res.status(400).json({ message: 'testId and price are required' });
+  if (location) {
+    const result = await setLocationPrice(location, clientId, testId, price);
+    return result.error ? res.status(400).json({ message: result.error }) : res.json(result.record);
+  }
 
   const [record] = await ClientTestPrice.findOrCreate({
     where: { clientId, testId },
@@ -34,11 +89,14 @@ async function setPrice(req, res) {
 // pre-populated with every test and this client's current price (if any).
 async function downloadTemplate(req, res) {
   const clientId = resolveClientId(req);
-  const [tests, prices] = await Promise.all([
+  const { location, error } = await priceLocation(req, req.query.locationId);
+  if (error) return res.status(400).json({ message: error });
+  const [tests, prices, own] = await Promise.all([
     TestMaster.findAll({ where: { active: true }, order: [['testCode', 'ASC']] }),
     ClientTestPrice.findAll({ where: { clientId } }),
+    location ? ClientLocationTestPrice.findAll({ where: { locationId: location.id } }) : [],
   ]);
-  const priceByTestId = new Map(prices.map((p) => [p.testId, p.price]));
+  const priceByTestId = new Map([...prices, ...own].map((p) => [p.testId, p.price])); // a location's own price wins
 
   const rows = tests.map((t) => ({
     TEST_CODE: t.testCode,
@@ -67,6 +125,10 @@ async function previewUpload(req, res) {
   const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  if (rows.length === 0) return res.status(400).json({ message: 'The file has no rows - fill in TEST_CODE and PRICE under the header row' });
+  if ((await TestMaster.count()) === 0) {
+    return res.status(400).json({ message: 'No tests in the Test Master yet - Chief Admin must add tests before prices can be uploaded' });
+  }
 
   const testCodes = [...new Set(rows.map((r) => String(r.TEST_CODE || '').trim()).filter(Boolean))];
   const tests = await TestMaster.findAll({ where: { testCode: testCodes } });
@@ -74,11 +136,14 @@ async function previewUpload(req, res) {
 
   const preview = rows.map((r, idx) => {
     const testCode = String(r.TEST_CODE || '').trim();
-    const price = Number(r.PRICE);
+    // A blank PRICE is "no change", not ₹0 - so a template with only some prices filled is safe.
+    const priceText = String(r.PRICE ?? '').trim();
+    const price = priceText === '' ? null : Number(priceText);
     const errors = [];
     if (!testCode) errors.push('TEST_CODE is missing');
     else if (!testByCode.has(testCode)) errors.push(`Unknown TEST_CODE: ${testCode}`);
-    if (Number.isNaN(price) || price < 0) errors.push('PRICE is invalid');
+    if (price === null) errors.push('PRICE is empty - skipped');
+    else if (Number.isNaN(price) || price < 0) errors.push('PRICE is invalid');
 
     return {
       row: idx + 2, // account for header row
@@ -108,12 +173,20 @@ async function commitUpload(req, res) {
 
   const client = await Client.findByPk(clientId);
   if (!client) return res.status(404).json({ message: 'Client not found' });
+  const { location, error } = await priceLocation(req, req.body.locationId);
+  if (error) return res.status(400).json({ message: error });
 
   const results = { success: [], errors: [] };
   for (const row of rows) {
     const test = await TestMaster.findOne({ where: { testCode: row.testCode } });
-    if (!test || Number.isNaN(Number(row.price))) {
+    if (!test || row.price === null || row.price === '' || Number.isNaN(Number(row.price)) || Number(row.price) < 0) {
       results.errors.push({ testCode: row.testCode, reason: 'Invalid test code or price' });
+      continue;
+    }
+    if (location) {
+      const result = await setLocationPrice(location, clientId, test.id, row.price);
+      if (result.error) results.errors.push({ testCode: row.testCode, reason: result.error });
+      else results.success.push({ testCode: row.testCode, price: row.price });
       continue;
     }
     const [record] = await ClientTestPrice.findOrCreate({

@@ -2,6 +2,7 @@ const router = require('express').Router();
 
 router.use('/auth', require('./auth.routes'));
 router.use('/clients', require('./client.routes'));
+router.use('/locations', require('./location.routes'));
 router.use('/payments', require('./payment.routes'));
 router.use('/masters', require('./master.routes'));
 router.use('/test-config', require('./testConfig.routes'));
