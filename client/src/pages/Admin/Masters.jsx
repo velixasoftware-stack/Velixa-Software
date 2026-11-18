@@ -15,7 +15,37 @@ const MASTER_TABS = [
 ];
 
 function blankTest() {
-  return { testCode: '', testName: '', category: '', testType: 'REGULAR' };
+  return { testCode: '', testName: '', category: '', price: '', testType: 'REGULAR' };
+}
+
+/**
+ * A package's tests, each with this lab's own price for it, then the total of
+ * those prices - shown before the package price so the saving is visible.
+ */
+function PackageTests({ pkg, priceByTestId }) {
+  const tests = pkg.TestMasters || [];
+  const total = tests.reduce((s, t) => s + (priceByTestId.get(t.id) || 0), 0);
+  const unpriced = tests.filter((t) => !priceByTestId.has(t.id)).length;
+  const saving = total - Number(pkg.price);
+  return (
+    <div style={{ whiteSpace: 'normal', fontSize: 12.5 }}>
+      {tests.map((t) => (
+        <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: '#475569', padding: '1px 0' }}>
+          <span>{t.testName}</span>
+          <span style={{ whiteSpace: 'nowrap' }}>{priceByTestId.has(t.id) ? `₹${priceByTestId.get(t.id).toFixed(2)}` : <span className="cell-sub">no price</span>}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderTop: '1px dashed #cbd5e1', marginTop: 3, paddingTop: 3, fontWeight: 600, color: '#0f172a' }}>
+        <span>Tests total{unpriced ? ` (${unpriced} without price)` : ''}</span>
+        <span style={{ whiteSpace: 'nowrap' }}>₹{total.toFixed(2)}</span>
+      </div>
+      {total > 0 && saving !== 0 && (
+        <div style={{ textAlign: 'right', fontSize: 11.5, color: saving > 0 ? '#166534' : '#b45309' }}>
+          {saving > 0 ? `Package saves ₹${saving.toFixed(2)}` : `Package is ₹${(-saving).toFixed(2)} more than the tests`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function blankPackage() {
@@ -107,7 +137,7 @@ export default function Masters() {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/masters/tests', newTest);
+      await api.post('/masters/tests', { ...newTest, price: Number(newTest.price) });
       setNewTest(blankTest());
       loadAll();
     } catch (err) {
@@ -322,6 +352,9 @@ export default function Masters() {
                 {groups.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
               </select>
             </label>
+            <label style={{ maxWidth: 120 }}><span>Price (₹)</span>
+              <input type="number" min="0" step="0.01" value={newTest.price} onChange={(e) => setNewTest((f) => ({ ...f, price: e.target.value }))} required />
+            </label>
             <label><span>Test Type</span>
               <select value={newTest.testType} onChange={(e) => setNewTest((f) => ({ ...f, testType: e.target.value }))} required>
                 {TEST_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -398,13 +431,13 @@ export default function Masters() {
               <p className="cell-sub">A package&apos;s price is the same at every location.</p>
               <div className="masters-table-wrap">
                 <table className="orders-table">
-                  <thead><tr><th>Package Code</th><th>Package Name</th><th>Tests Included</th><th style={{ textAlign: 'right' }}>Price</th><th></th></tr></thead>
+                  <thead><tr><th>Package Code</th><th>Package Name</th><th>Tests Included (price each, total)</th><th style={{ textAlign: 'right' }}>Package Price</th><th></th></tr></thead>
                   <tbody>
                     {packages.filter((p) => matches(p.packageCode, p.packageName)).map((p) => (
                       <tr key={p.id}>
                         <td style={{ whiteSpace: 'nowrap' }}>{p.packageCode}</td>
                         <td>{p.packageName}</td>
-                        <td className="cell-sub" style={{ whiteSpace: 'normal' }}>{(p.TestMasters || []).map((t) => t.testName).join(', ')}</td>
+                        <td style={{ minWidth: 260 }}><PackageTests pkg={p} priceByTestId={priceByTestId} /></td>
                         <td style={{ textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>₹{p.price}</td>
                         <td>
                           <button type="button" className="secondary" style={{ padding: '2px 10px', fontSize: 12 }}
@@ -522,14 +555,14 @@ export default function Masters() {
           </div>
           <div className="masters-table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Code</th><th>Name</th><th>Tests Included</th><th style={{ textAlign: 'right' }}>Price</th><th></th></tr></thead>
+              <thead><tr><th>Code</th><th>Name</th><th>Tests Included (price each, total)</th><th style={{ textAlign: 'right' }}>Package Price</th><th></th></tr></thead>
               <tbody>
                 {packages.filter((p) => matches(p.packageCode, p.packageName, ...(p.TestMasters || []).map((t) => t.testName))).map((p) => (
                   <tr key={p.id} style={packageForm.id === p.id ? { background: '#eff6ff' } : undefined}>
                     <td style={{ whiteSpace: 'nowrap' }}>{p.packageCode}</td>
                     <td>{p.packageName}</td>
-                    <td className="cell-sub" style={{ whiteSpace: 'normal' }}>{(p.TestMasters || []).map((t) => t.testName).join(', ')}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{p.price}</td>
+                    <td style={{ minWidth: 260 }}><PackageTests pkg={p} priceByTestId={priceByTestId} /></td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>₹{p.price}</td>
                     <td>
                       <button type="button" className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => editPackage(p)}>
                         Edit

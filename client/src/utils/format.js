@@ -20,6 +20,7 @@ export function formatDateDMY(value) {
 export function doctorLabel(name) {
   const n = (name || '').trim();
   if (!n) return '';
+  if (/^(dr\.?\s*)?self$/i.test(n)) return 'Self'; // no referring doctor - never "Dr. Self"
   return /^dr\b\.?/i.test(n) ? n : `Dr. ${n}`;
 }
 

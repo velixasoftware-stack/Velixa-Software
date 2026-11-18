@@ -194,11 +194,19 @@ async function createTest(req, res) {
     if (!group) return res.status(400).json({ message: 'Select a Service Group for the test' });
     groupName = group.name;
   }
+  // A client gives its price for the new test as it creates it (its main price).
+  const clientPrice = req.body.price;
+  if (requesterClientId(req) && (clientPrice == null || clientPrice === '' || !Number.isFinite(Number(clientPrice)) || Number(clientPrice) < 0)) {
+    return res.status(400).json({ message: 'Enter the price for the new test (0 or more)' });
+  }
 
   const existing = await TestMaster.findOne({ where: { testCode } });
   if (existing) return res.status(409).json({ message: 'Test Code already exists' });
 
   const test = await TestMaster.create({ testCode, testName, category: groupName, sampleType, testType: testType || 'REGULAR', interpretation });
+  if (requesterClientId(req)) {
+    await ClientTestPrice.create({ clientId: requesterClientId(req), testId: test.id, price: Number(clientPrice) });
+  }
 
   if (Array.isArray(parameters)) {
     const clientId = requesterClientId(req);

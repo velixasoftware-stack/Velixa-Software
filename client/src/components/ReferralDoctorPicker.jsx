@@ -6,9 +6,8 @@ function initials(name) {
 }
 
 /**
- * Optional "Referral" field on the billing page, laid out like the fields
- * beside it. Whatever is typed is the referring doctor (blank = no
- * referral). While typing it suggests this clinic's saved doctors (most
+ * Required "Ref. Doctor" field on the billing page (Self by default), laid
+ * out like the fields beside it. Whatever is typed is the referring doctor. While typing it suggests this clinic's saved doctors (most
  * recently used first); a name not saved yet is saved against the clinic
  * when the bill is generated (findOrCreateDoctor on the server), so it's
  * suggested from the next bill on.
@@ -44,7 +43,7 @@ export default function ReferralDoctorPicker({ value, onChange }) {
 
   return (
     <div className="referral-field" ref={boxRef}>
-      <span>Referral <small className="referral-optional">(optional)</small></span>
+      <span>Ref. Doctor <span style={{ color: '#dc2626' }}>*</span></span>
       <div className="referral-input">
         <span className="referral-input-icon" aria-hidden="true">{typed ? initials(typed) : 'Dr'}</span>
         <input
@@ -52,7 +51,7 @@ export default function ReferralDoctorPicker({ value, onChange }) {
           onChange={(e) => { onChange(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setOpen(false); } }}
-          placeholder="Doctor's name"
+          placeholder="Doctor's name, or Self"
         />
         {typed && (
           <button type="button" className="referral-clear" aria-label="Clear referral" onClick={() => { onChange(''); setOpen(false); }}>×</button>

@@ -184,7 +184,8 @@ async function createBill(req, res) {
     }
   }
 
-  const doctor = referredDoctorName ? await findOrCreateDoctor(clientId, referredDoctorName) : null;
+  // Ref. Doctor is required on every bill: none given = "Self".
+  const doctor = await findOrCreateDoctor(clientId, String(referredDoctorName || '').trim() || 'Self');
   const discountAmount = Number(discount) || 0;
   const totalAmount = round2(lines.reduce((sum, l) => sum + l.price, 0));
   const taxableAmount = Math.max(0, totalAmount - discountAmount);

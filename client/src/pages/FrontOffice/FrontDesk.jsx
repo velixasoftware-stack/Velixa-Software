@@ -42,7 +42,8 @@ export default function FrontDesk() {
   const testBoxRef = useRef(null);
 
   const [billingType, setBillingType] = useState('DIRECT'); // DIRECT | PAYOR
-  const [doctorName, setDoctorName] = useState('');
+  // Ref. Doctor is required on every bill - "Self" by default (no referring doctor).
+  const [doctorName, setDoctorName] = useState('Self');
   const [walkInDate, setWalkInDate] = useState(todayISO());
   const [visitType, setVisitType] = useState('WALK-IN');
   const [priority, setPriority] = useState('ROUTINE');
@@ -220,6 +221,10 @@ export default function FrontDesk() {
     e.preventDefault();
     if (generating) return;
     setError('');
+    if (!doctorName.trim()) {
+      setError('Ref. Doctor is required - pick a doctor or enter Self.');
+      return;
+    }
     if (!isCredit && collectingNow > 0 && !paymentMode) {
       setError('Payment Mode is required.');
       return;
@@ -282,7 +287,7 @@ export default function FrontDesk() {
     setSelectedPackages([]);
     setBarcodes({});
     setBillingType('DIRECT');
-    setDoctorName('');
+    setDoctorName('Self');
     setPayorId('');
     setDiscount('0');
     api.get('/billing-settings').then((r) => setGstPercent(String(r.data.defaultGstPercent ?? 0)));
