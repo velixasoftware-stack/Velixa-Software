@@ -79,8 +79,23 @@ function ReportHeader({ report, includeHeader, releasedAt, onImageLoad, pageLett
   );
 }
 
+/**
+ * The reference interval with the unit after it, e.g. "12 - 15 g/dL". A range
+ * text of several lines gets the unit on each line ending in a number, unless
+ * the text already says the unit.
+ */
+function rangeWithUnit(p) {
+  const range = rangeLabel(p);
+  const unit = (p.unit || '').trim();
+  if (!unit) return range || '—';
+  if (!range) return unit;
+  return range.split('\n')
+    .map((line) => (/\d\s*$/.test(line) && !line.includes(unit) ? `${line.trimEnd()} ${unit}` : line))
+    .join('\n');
+}
+
 function ParamTableHead() {
-  return <thead><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Bio. Ref. Interval</th></tr></thead>;
+  return <thead><tr><th>Parameter</th><th>Result</th><th>Bio. Ref. Interval</th><th>Method</th></tr></thead>;
 }
 
 /**
@@ -99,8 +114,8 @@ function SignatureBlock({ doctor }) {
           <img src={doctor.signatureUrl} alt="Signature" style={{ height: 50, display: 'block', margin: '0 auto 4px' }} />
         )}
         <div style={{ minWidth: 160 }}>
-          <strong style={{ fontSize: 13 }}>{doctor.name}</strong>
-          {doctor.designation && <div style={{ fontSize: 12, color: '#64748b' }}>{doctor.designation}</div>}
+          <strong style={{ fontSize: 16 }}>{doctor.name}</strong>
+          {doctor.designation && <div style={{ fontSize: 14, color: '#475569', marginTop: 2 }}>{doctor.designation}</div>}
         </div>
       </div>
     </div>
@@ -123,9 +138,10 @@ function buildUnits({ groups, trend, includeTrend }) {
 
   let testIdx = 0;
   groups.forEach((g, gi) => {
+    const start = units.length;
     // The service group's name heads its tests.
     units.push({
-      key: `g${gi}-head`, kind: 'block', testIdx: null, keepWithNext: true, pageBreakBefore: gi > 0,
+      key: `g${gi}-head`, kind: 'block', testIdx: null, keepWithNext: true, pageBreakBefore: gi > 0, groupHead: true,
       node: (
         <div className={`report-group-head${gi > 0 ? ' report-group-break' : ''}`}>
           {g.name && <div className="report-group-title">{g.name}</div>}
@@ -140,6 +156,8 @@ function buildUnits({ groups, trend, includeTrend }) {
     if (g.doctor) {
       units.push({ key: `g${gi}-sig`, kind: 'block', testIdx: null, keepWithPrevious: true, node: <SignatureBlock doctor={g.doctor} /> });
     }
+    // Tag the group's pieces, so a page its tests carry over onto repeats the group name at its top.
+    units.slice(start).forEach((u) => { u.groupIdx = gi; u.groupName = g.name || null; });
   });
   addTrailingUnits(units, { unplacedTrend: trendRows.filter((r) => !placed.has(r)), hasTrend: trendRows.length > 0 });
   return units;
@@ -180,9 +198,9 @@ function addTestUnits(units, t, testIdx, trendRows = []) {
       <tr>
         <td>{p.parameterName}</td>
         <td style={p.isAbnormal ? { color: '#b91c1c', fontWeight: 700 } : undefined}>{p.value}</td>
-        <td>{p.unit || '—'}</td>
-        {/* The printed Normal Range text when set (may be several lines), else low - high. */}
-        <td className="report-ref-range">{rangeLabel(p)}</td>
+        {/* The printed Normal Range text when set (may be several lines), else low - high - with the unit after it. */}
+        <td className="report-ref-range">{rangeWithUnit(p)}</td>
+        <td className="report-param-method">{(p.method && p.method.trim()) || '—'}</td>
       </tr>
     ),
   }));
@@ -341,6 +359,16 @@ function paginate(units, h) {
     for (let j = i + 1; units[j]?.keepWithPrevious; j += 1) need += h.units[units[j].key] || 0;
     if (page.units.length > 0 && page.used + need > h.available) {
       newPage();
+      // The service group carries on from the previous page: repeat its name
+      // at the top, as on the group's first page.
+      if (u.groupName && !u.groupHead) {
+        const headKey = `g${u.groupIdx}-head`;
+        page.units.push({
+          key: `${headKey}-p${pages.length}`, kind: 'block', testIdx: null,
+          node: <div className="report-group-head"><div className="report-group-title">{u.groupName}</div></div>,
+        });
+        page.used += h.units[headKey] || 0;
+      }
       cost = costOf(u, page);
     }
     if (u.testIdx != null && u.kind !== 'title' && !page.titled.has(u.testIdx)) {
@@ -518,12 +546,15 @@ export default function LabReport({ publicToken } = {}) {
         </div>
       </div>
 
-      {/* On screen: one continuous sheet. */}
-      <div className={`report-sheet report-screen-only${pageClass}`} style={pageStyle}>
-        {pageBackground}
-        {header}
-        <UnitRun units={units} />
-      </div>
+      {/* On screen: one continuous sheet - unless the letterhead is a full A4
+          page. Its footer artwork would then land in the middle of a long
+          report, so the screen shows the real A4 pages instead (below). */}
+      {!pageLetterhead && (
+        <div className="report-sheet report-screen-only">
+          {header}
+          <UnitRun units={units} />
+        </div>
+      )}
 
       {/* The report prints on A4 - set only while this page is open, so bills
           and other printouts keep the printer's own paper size. */}
@@ -531,7 +562,7 @@ export default function LabReport({ publicToken } = {}) {
 
       {/* Printed: real A4 pages, each starting with the same letterhead +
           patient details as page 1. */}
-      <div className="report-print-pages">
+      <div className={`report-print-pages${pageLetterhead ? ' report-screen-paged' : ''}`}>
         {pages.map((pageUnits, i) => (
           <div className={`report-print-page${pageClass}`} style={pageStyle} key={i}>
             {pageBackground}
@@ -551,7 +582,7 @@ export default function LabReport({ publicToken } = {}) {
         <div className={`report-print-page report-measure-body${pageClass}`} style={pageStyle}><div data-probe="body" style={{ height: '100%' }} /></div>
         <div className="report-print-page" style={{ height: 'auto' }}>
           <div className="report-test-block" data-probe="title"><h4 className="report-test-title">Title (contd.)</h4></div>
-          <table className="report-param-table"><thead data-probe="thead"><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Bio. Ref. Interval</th></tr></thead></table>
+          <table className="report-param-table"><thead data-probe="thead"><tr><th>Parameter</th><th>Result</th><th>Bio. Ref. Interval</th><th>Method</th></tr></thead></table>
           {units.map((u) => {
             if (u.kind === 'title') {
               return <div key={u.key} data-unit={u.key} className="report-test-block"><h4 className="report-test-title">{u.title}</h4></div>;

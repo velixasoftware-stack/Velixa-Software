@@ -407,6 +407,7 @@ async function buildBillReport(bill) {
         parameterName: r.ParameterMaster.parameterName,
         value: r.value,
         unit: r.ParameterMaster.unit,
+        method: r.ParameterMaster.method || null, // testing method (this clinic's own label if set), printed under the parameter name
         normalRangeLow: range.normalRangeLow,
         normalRangeHigh: range.normalRangeHigh,
         normalRangeText: printedRangeText(r.ParameterMaster, gender, range), // the matching age/gender row's text (or the parameter's), printed instead of low - high when set
