@@ -335,7 +335,14 @@ function paginate(units, h) {
     const title = units[i];
     const first = units[i + 1];
     let need = h.units[title.key] || 0;
-    if (first && first.testIdx === title.testIdx) need += (h.units[first.key] || 0) + (first.kind === 'row' ? h.tableHead : 0);
+    if (first && first.testIdx === title.testIdx) {
+      need += (h.units[first.key] || 0) + (first.kind === 'row' ? h.tableHead : 0);
+      // Pieces that must stay with that first row (its Sample Type, the
+      // group's signature, the disclaimer - e.g. a one-row test at a group's
+      // end) move with it, so the title must have room for them too - else
+      // the title is left alone at the page foot and its rows go over.
+      for (let j = i + 2; units[j]?.keepWithPrevious; j += 1) need += h.units[units[j].key] || 0;
+    }
     return need;
   };
 
