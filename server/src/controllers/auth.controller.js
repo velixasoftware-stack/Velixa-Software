@@ -214,7 +214,9 @@ async function changeOwnPassword(req, res) {
 // the single-session check in auth.middleware.js, even before it expires.
 async function logout(req, res) {
   const Model = req.user.type === 'CHIEF_ADMIN' ? ChiefAdmin : ClientUser;
-  await Model.update({ currentSessionId: null }, { where: { id: req.user.id } });
+  // The shared Chief Admin Support login: one admin logging out must not end
+  // the others' sessions (it has no single session - see auth.middleware.js).
+  await Model.update({ currentSessionId: null }, { where: { id: req.user.id, ...(Model === ClientUser ? { isSystemUser: false } : {}) } });
   return res.json({ message: 'Logged out.' });
 }
 

@@ -38,7 +38,10 @@ async function authenticate(req, res, next) {
     if (!user || !user.active || !user.Client || !user.Client.active) {
       return res.status(401).json({ message: 'This account is no longer active' });
     }
-    if (user.currentSessionId !== payload.sessionId) {
+    // One session at a time per user - except the client's shared Chief Admin
+    // Support login, which several Chief Admin users may have open at once
+    // (one opening the client must not log another out).
+    if (!user.isSystemUser && user.currentSessionId !== payload.sessionId) {
       return res.status(401).json({ message: 'You have been logged out because this account signed in elsewhere' });
     }
     // A single-location user always works at (and sees only) their own

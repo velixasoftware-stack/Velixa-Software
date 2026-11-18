@@ -422,10 +422,10 @@ async function mintSystemUserSession(client, locationId = null) {
   if (picked.error) return { error: picked.error };
 
   const roles = (await systemUser.getRoles()).map((r) => r.name);
-  // A fresh session id evicts any session already active for this support
-  // login elsewhere, same single-session rule every other login follows.
+  // The support login is shared by every Chief Admin user, so it may have
+  // several sessions at once (auth.middleware skips the single-session check
+  // for it) - a new one never logs out a Chief Admin already in this client.
   const sessionId = crypto.randomUUID();
-  await systemUser.update({ currentSessionId: sessionId });
   const token = signToken({
     type: 'CLIENT_USER', id: systemUser.id, clientId: client.id, clientCode: client.clientCode, roles, sessionId,
     locationId: picked.location?.id || null,
