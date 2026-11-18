@@ -330,15 +330,7 @@ It will no longer appear on result entry. Reports already released keep their va
     }
   }
 
-  // Brings back a universal parameter removed for this lab only.
-  async function restoreParam(p) {
-    try {
-      await api.post(`/test-config/tests/${selectedTest.id}/parameters/${p.id}/restore`);
-      await loadAll();
-    } catch (err) {
-      window.alert(err.response?.data?.message || 'Could not restore the parameter');
-    }
-  }
+  // Restoring a removed parameter is Chief Admin only (Chief Admin > Removed Parameters).
   return (
     <div>
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -457,6 +449,7 @@ It will no longer appear on result entry. Reports already released keep their va
                   <h4 style={{ margin: '0 0 4px' }}>Removed for your lab</h4>
                   <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 6px' }}>
                     Universal parameters you removed from this test. Only your lab is affected - other labs still have them.
+                    To bring one back, contact Chief Admin.
                   </p>
                   <table>
                     <tbody>
@@ -464,9 +457,6 @@ It will no longer appear on result entry. Reports already released keep their va
                         <tr key={p.id}>
                           <td>{p.parameterName}</td>
                           <td>{p.unit || '—'}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <button type="button" className="secondary" onClick={() => restoreParam(p)}>Restore</button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>

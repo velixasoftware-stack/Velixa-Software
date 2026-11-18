@@ -651,15 +651,10 @@ async function removeParameter(req, res) {
 }
 
 // POST /api/test-config/tests/:testId/parameters/:parameterId/restore
-// Brings back a universal parameter this clinic removed from a test for itself.
+// A client can no longer bring back a parameter it removed - only Chief Admin
+// can (Chief Admin > Removed Parameters, see removedParameters.controller.js).
 async function restoreHiddenParameter(req, res) {
-  const clientId = requesterClientId(req);
-  if (!clientId) return res.status(400).json({ message: 'Only a client can restore its own removed parameters' });
-  const removed = await ClientHiddenParameter.destroy({
-    where: { clientId, testId: req.params.testId, parameterId: req.params.parameterId },
-  });
-  if (!removed) return res.status(404).json({ message: 'That parameter is not removed for your lab' });
-  return res.json({ message: 'Parameter restored to this test' });
+  return res.status(403).json({ message: 'Removed parameters can only be restored by Chief Admin' });
 }
 
 // PUT /api/{admin/masters|masters|test-config}/parameters/:parameterId

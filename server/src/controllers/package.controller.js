@@ -1,17 +1,34 @@
 const XLSX = require('xlsx');
 const { Package, TestMaster } = require('../models');
 
-// POST /api/masters/packages  { packageCode, packageName, price, testIds: [1,2,3] }
+// The client's next package code: "PKG" + the number after its highest
+// PKG number (PKG001, PKG002 ...). Codes are per client.
+async function nextPackageCode(clientId) {
+  const existing = await Package.findAll({ where: { clientId }, attributes: ['packageCode'] });
+  let maxN = 0;
+  for (const p of existing) {
+    const m = String(p.packageCode || '').match(/^PKG(\d+)$/i);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  const taken = new Set(existing.map((p) => String(p.packageCode).toUpperCase()));
+  let n = maxN + 1;
+  while (taken.has(`PKG${String(n).padStart(3, '0')}`)) n += 1;
+  return `PKG${String(n).padStart(3, '0')}`;
+}
+
+// POST /api/masters/packages  { packageName, price, testIds: [1,2,3] }
+// The package code is always generated (PKG001, PKG002 ... per client).
 async function createPackage(req, res) {
   const { clientId } = req.user;
-  const { packageCode, packageName, price, testIds } = req.body;
+  const { packageName, price, testIds } = req.body;
 
-  if (!packageCode || !packageName || price == null || !Array.isArray(testIds) || testIds.length === 0) {
-    return res.status(400).json({ message: 'packageCode, packageName, price and at least one test are required' });
+  if (!String(packageName || '').trim() || price == null || price === '' || !Array.isArray(testIds) || testIds.length === 0) {
+    return res.status(400).json({ message: 'Package name, price and at least one test are required' });
   }
-
-  const existing = await Package.findOne({ where: { clientId, packageCode } });
-  if (existing) return res.status(409).json({ message: 'Package Code already exists' });
+  if (!Number.isFinite(Number(price)) || Number(price) < 0) {
+    return res.status(400).json({ message: 'Enter a valid package price (0 or more)' });
+  }
+  const packageCode = await nextPackageCode(clientId);
 
   const tests = await TestMaster.findAll({ where: { id: testIds } });
   if (tests.length !== testIds.length) {
@@ -42,6 +59,12 @@ async function updatePackage(req, res) {
   if (!pkg) return res.status(404).json({ message: 'Package not found' });
 
   const { packageName, price, testIds, active } = req.body;
+  if (price !== undefined && (price === null || price === '' || !Number.isFinite(Number(price)) || Number(price) < 0)) {
+    return res.status(400).json({ message: 'Enter a valid package price (0 or more)' });
+  }
+  if (packageName !== undefined && !String(packageName || '').trim()) {
+    return res.status(400).json({ message: 'Package name cannot be empty' });
+  }
   await pkg.update({
     packageName: packageName ?? pkg.packageName,
     price: price ?? pkg.price,

@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const XLSX = require('xlsx');
 const {
   Bill, BillItem, TestMaster, Sample, Report, Patient, Refund, BillDiscount, DuePayment, Result, ClientUser, ClientLocation,
+  ReferralDoctor, Package,
 } = require('../models');
 const { locationWhere } = require('../utils/location');
 
@@ -38,7 +39,7 @@ function dateKey(date, groupBy) {
 
 /** A "YYYY-MM-DD" from the date pickers, as the start of that day in IST. */
 function istDayStart(value) {
-  return /^d{4}-d{2}-d{2}$/.test(String(value)) ? new Date(`${value}T00:00:00+05:30`) : new Date(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? new Date(`${value}T00:00:00+05:30`) : new Date(value);
 }
 
 /**
@@ -484,7 +485,115 @@ async function exportReport(req, res) {
   return res.send(buffer);
 }
 
+/**
+ * Revenue by referring doctor for the period. Bills with no doctor are grouped
+ * as "Self". Per doctor: each bill (number, date, patient, tests, gross,
+ * discount, GST, net, collected, outstanding) and totals; per bill, each test
+ * billed (code, name, package, price, status). Money figures follow the
+ * Collection Summary: net = gross - discount + GST.
+ */
+async function buildDoctorWise(req) {
+  const { clientId } = req.user;
+  const { from, to } = req.query;
+  const bills = await Bill.findAll({
+    where: { clientId, ...rangeFor(req, from, to) },
+    include: [
+      { model: ReferralDoctor, attributes: ['id', 'name'] },
+      { model: Patient, attributes: ['id', 'name', 'umr'] },
+      {
+        model: BillItem,
+        attributes: ['id', 'price', 'status'],
+        include: [
+          { model: TestMaster, attributes: ['testCode', 'testName'] },
+          { model: Package, attributes: ['packageCode', 'packageName'] },
+        ],
+      },
+    ],
+    order: [['createdAt', 'ASC']],
+  });
+
+  const doctors = new Map();
+  const totalsOf = () => ({ bills: 0, tests: 0, gross: 0, discount: 0, tax: 0, net: 0, collected: 0, outstanding: 0 });
+  for (const b of bills) {
+    // A doctor entry literally named "Self" is the same as no doctor - one "Self" row.
+    const doctor = b.ReferralDoctor && !/^\s*(dr\.?\s*)?self\s*$/i.test(b.ReferralDoctor.name) ? b.ReferralDoctor : null;
+    const key = doctor ? `d${doctor.id}` : 'self';
+    if (!doctors.has(key)) {
+      doctors.set(key, { doctorId: doctor?.id || null, doctorName: doctor?.name || 'Self', bills: [], totals: totalsOf() });
+    }
+    const d = doctors.get(key);
+    const gross = Number(b.totalAmount);
+    const discount = Number(b.discount);
+    const tax = Number(b.taxAmount);
+    const tests = (b.BillItems || []).map((i) => ({
+      testCode: i.TestMaster?.testCode || '',
+      testName: i.TestMaster?.testName || '',
+      packageName: i.Package ? i.Package.packageName : null,
+      price: Number(i.price),
+      status: i.status,
+    }));
+    const row = {
+      billNo: b.billNo,
+      date: b.createdAt,
+      patientName: b.Patient?.name || '',
+      umr: b.Patient?.umr || '',
+      tests,
+      testCount: tests.filter((t) => t.status !== 'CANCELLED').length,
+      gross,
+      discount,
+      tax,
+      net: gross - discount + tax,
+      collected: Number(b.paidAmount),
+      outstanding: dueTotal(b),
+    };
+    d.bills.push(row);
+    d.totals.bills += 1;
+    d.totals.tests += row.testCount;
+    for (const k of ['gross', 'discount', 'tax', 'net', 'collected', 'outstanding']) d.totals[k] += row[k];
+  }
+  // Highest net revenue first; "Self" last.
+  return [...doctors.values()].sort((a, b) => ((a.doctorId == null) - (b.doctorId == null)) || (b.totals.net - a.totals.net));
+}
+
+// GET /api/reports/doctor-wise?from=&to=&locationId=[&format=xlsx]
+async function doctorWise(req, res) {
+  const doctors = await buildDoctorWise(req);
+  if (req.query.format !== 'xlsx') return res.json(doctors);
+
+  const ist = (d) => new Date(new Date(d).getTime() + IST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ');
+  const summary = [];
+  const detailed = [];
+  for (const d of doctors) {
+    for (const b of d.bills) {
+      summary.push({
+        'Doctor Name': d.doctorName, 'Bill No': b.billNo, 'Bill Date': ist(b.date), Patient: b.patientName, UMR: b.umr,
+        Tests: b.testCount, Gross: b.gross, Discount: b.discount, GST: b.tax, Net: b.net, Collected: b.collected, Outstanding: b.outstanding,
+      });
+      for (const t of b.tests) {
+        detailed.push({
+          'Doctor Name': d.doctorName, 'Bill No': b.billNo, 'Bill Date': ist(b.date), Patient: b.patientName, UMR: b.umr,
+          'Test Code': t.testCode, 'Test Name': t.testName, Package: t.packageName || '', Price: t.price,
+          Status: t.status === 'CANCELLED' ? 'Cancelled' : 'Active',
+        });
+      }
+    }
+    summary.push({
+      'Doctor Name': `${d.doctorName} - TOTAL`, 'Bill No': `${d.totals.bills} bill(s)`, Tests: d.totals.tests,
+      Gross: d.totals.gross, Discount: d.totals.discount, GST: d.totals.tax, Net: d.totals.net,
+      Collected: d.totals.collected, Outstanding: d.totals.outstanding,
+    });
+  }
+  const empty = [{ 'Doctor Name': 'No bills in this period' }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summary.length ? summary : empty), 'Doctor Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailed.length ? detailed : empty), 'Doctor Test Details');
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="doctor-wise-revenue.xlsx"');
+  return res.send(buffer);
+}
+
 module.exports = {
   transactions, collectionSummary, outstanding, labSummary, labDetails, testWiseRevenue, reportStatusCounts, exportReport,
-  paymentBreakdown, locationWise,
+  paymentBreakdown, locationWise, doctorWise,
 };

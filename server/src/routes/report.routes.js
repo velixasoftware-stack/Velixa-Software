@@ -16,6 +16,7 @@ router.get('/test-wise-revenue', reportCtrl.testWiseRevenue);
 router.get('/report-status', reportCtrl.reportStatusCounts);
 router.get('/payment-breakdown', reportCtrl.paymentBreakdown);
 router.get('/location-wise', reportCtrl.locationWise);
+router.get('/doctor-wise', reportCtrl.doctorWise);
 router.get('/export', reportCtrl.exportReport);
 
 module.exports = router;

@@ -13,6 +13,7 @@ import PatientTitles from './pages/ChiefAdmin/PatientTitles';
 import ChiefAdminUsers from './pages/ChiefAdmin/ChiefAdminUsers';
 import TestRemoval from './pages/ChiefAdmin/TestRemoval';
 import ClientSetupCopy from './pages/ChiefAdmin/ClientSetupCopy';
+import RemovedParameters from './pages/ChiefAdmin/RemovedParameters';
 import ClientDataReset from './pages/ChiefAdmin/ClientDataReset';
 import PublicReport from './pages/PublicReport';
 import ChiefAdminTickets from './pages/ChiefAdmin/Tickets';
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="patient-titles" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><PatientTitles /></ProtectedRoute>} />
         <Route path="test-removal" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><TestRemoval /></ProtectedRoute>} />
         <Route path="client-setup-copy" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientSetupCopy /></ProtectedRoute>} />
+        <Route path="removed-parameters" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><RemovedParameters /></ProtectedRoute>} />
         <Route path="data-reset" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientDataReset /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminUsers /></ProtectedRoute>} />
         <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ChiefAdminTickets /></ProtectedRoute>} />

@@ -1,7 +1,100 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import api from '../../api/client';
 import { downloadFile } from '../../utils/download';
 import { Icon } from '../../components/Icons';
+import { formatDateDMY } from '../../utils/format';
+
+/**
+ * Doctor-wise revenue: Summary (each doctor's bills with bill number and
+ * amounts, plus a total row per doctor) or Detailed (every test billed, by
+ * doctor and bill). Excel download has both as separate sheets.
+ */
+function DoctorWiseRevenue({ doctors, view, onView, onExcel }) {
+  const grand = doctors.reduce((s, d) => ({
+    bills: s.bills + d.totals.bills, tests: s.tests + d.totals.tests, net: s.net + d.totals.net,
+    collected: s.collected + d.totals.collected, outstanding: s.outstanding + d.totals.outstanding,
+  }), { bills: 0, tests: 0, net: 0, collected: 0, outstanding: 0 });
+  const date = (d) => formatDateDMY(new Date(d));
+  return (
+    <div className="card">
+      <div className="topbar" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>Doctor-wise Revenue</h3>
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div role="radiogroup" aria-label="Doctor-wise view" style={{ display: 'flex', gap: 12 }}>
+            {[['summary', 'Summary'], ['detailed', 'Detailed (with tests)']].map(([value, label]) => (
+              <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontWeight: 'normal' }}>
+                <input type="radio" name="doctorView" style={{ width: 'auto' }} checked={view === value} onChange={() => onView(value)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          <button type="button" className="dash-btn excel" onClick={onExcel}>⬇ Excel</button>
+        </div>
+      </div>
+
+      {doctors.length > 0 && (
+        <p className="cell-sub" style={{ margin: '6px 0 10px' }}>
+          {doctors.length} doctor(s) · {grand.bills} bill(s) · {grand.tests} test(s) · Net {inr(grand.net)} · Collected {inr(grand.collected)}
+          {grand.outstanding > 0 ? ` · Outstanding ${inr(grand.outstanding)}` : ''}
+        </p>
+      )}
+
+      {view === 'summary' ? (
+        <table>
+          <thead>
+            <tr><th>Doctor Name</th><th>Bill No</th><th>Date</th><th>Patient</th><th>Tests</th><th>Gross</th><th>Discount</th><th>Net</th><th>Collected</th><th>Outstanding</th></tr>
+          </thead>
+          <tbody>
+            {doctors.map((d) => (
+              <Fragment key={d.doctorId ?? 'self'}>
+                {d.bills.map((b, i) => (
+                  <tr key={b.billNo}>
+                    <td>{i === 0 ? <strong>{d.doctorName}</strong> : ''}</td>
+                    <td>{b.billNo}</td><td>{date(b.date)}</td><td>{b.patientName}</td><td>{b.testCount}</td>
+                    <td>{inr(b.gross)}</td><td>{inr(b.discount)}</td><td><strong>{inr(b.net)}</strong></td>
+                    <td>{inr(b.collected)}</td><td>{inr(b.outstanding)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: '#f1f5f9' }}>
+                  <th>{d.doctorName} — Total</th><th>{d.totals.bills} bill(s)</th><th /><th /><th>{d.totals.tests}</th>
+                  <th>{inr(d.totals.gross)}</th><th>{inr(d.totals.discount)}</th><th>{inr(d.totals.net)}</th>
+                  <th>{inr(d.totals.collected)}</th><th>{inr(d.totals.outstanding)}</th>
+                </tr>
+              </Fragment>
+            ))}
+            {doctors.length === 0 && <tr><td colSpan={10}>No bills in this period.</td></tr>}
+          </tbody>
+        </table>
+      ) : (
+        <table>
+          <thead>
+            <tr><th>Doctor Name</th><th>Bill No</th><th>Date</th><th>Patient</th><th>Test Code</th><th>Test Name</th><th>Price</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {doctors.map((d) => (
+              <Fragment key={d.doctorId ?? 'self'}>
+                {d.bills.flatMap((b) => b.tests.map((t, ti) => (
+                  <tr key={`${b.billNo}-${ti}`} style={t.status === 'CANCELLED' ? { color: '#94a3b8', textDecoration: 'line-through' } : undefined}>
+                    <td>{d.doctorName}</td>
+                    <td>{ti === 0 ? b.billNo : ''}</td><td>{ti === 0 ? date(b.date) : ''}</td><td>{ti === 0 ? b.patientName : ''}</td>
+                    <td>{t.testCode}</td>
+                    <td>{t.testName}{t.packageName && <span className="cell-sub"> · {t.packageName}</span>}</td>
+                    <td>{inr(t.price)}</td><td>{t.status === 'CANCELLED' ? 'Cancelled' : 'Active'}</td>
+                  </tr>
+                )))}
+                <tr style={{ background: '#f1f5f9' }}>
+                  <th colSpan={4}>{d.doctorName} — {d.totals.bills} bill(s), {d.totals.tests} test(s)</th>
+                  <th colSpan={4}>Net {inr(d.totals.net)}</th>
+                </tr>
+              </Fragment>
+            ))}
+            {doctors.length === 0 && <tr><td colSpan={8}>No bills in this period.</td></tr>}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 /** ₹ with Indian digit grouping, e.g. ₹1,05,000. */
 function inr(n) {
@@ -111,6 +204,8 @@ export default function Reports() {
   const [locationId, setLocationId] = useState(''); // '' = all locations
   const [locationWise, setLocationWise] = useState([]);
   const multiLocation = locations.length > 1;
+  const [doctorWise, setDoctorWise] = useState([]);
+  const [doctorView, setDoctorView] = useState('summary'); // 'summary' | 'detailed'
 
   useEffect(() => {
     api.get('/locations').then(({ data }) => setLocations(data.locations)).catch(() => {});
@@ -127,6 +222,7 @@ export default function Reports() {
     api.get('/reports/lab-details', { params: dateParams }).then((r) => setLabDetails(r.data));
     api.get('/reports/payment-breakdown', { params: dateParams }).then((r) => setBreakdown(r.data));
     api.get('/reports/location-wise', { params: dateParams }).then((r) => setLocationWise(r.data)).catch(() => setLocationWise([]));
+    api.get('/reports/doctor-wise', { params: dateParams }).then((r) => setDoctorWise(r.data)).catch(() => setDoctorWise([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromDate, toDate, locationId]);
 
@@ -145,6 +241,12 @@ export default function Reports() {
       if (value) params.set(key, value);
     }
     return `/reports/export?${params.toString()}`;
+  }
+
+  function doctorExcel() {
+    const params = new URLSearchParams({ format: 'xlsx' });
+    for (const [key, value] of Object.entries(dateParams)) if (value) params.set(key, value);
+    downloadFile(`/reports/doctor-wise?${params.toString()}`, 'doctor-wise-revenue.xlsx');
   }
 
   const outstandingAmt = Number(collection?.outstanding || 0);
@@ -338,6 +440,8 @@ export default function Reports() {
           <Kpi tone="green" label="Released" value={reportStatus?.RELEASED ?? 0} />
         </div>
       </div>
+
+      <DoctorWiseRevenue doctors={doctorWise} view={doctorView} onView={setDoctorView} onExcel={doctorExcel} />
 
       <div className="card">
         <h3>Test-wise Counts & Revenue</h3>
