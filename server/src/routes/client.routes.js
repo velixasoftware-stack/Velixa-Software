@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const multer = require('multer');
-const { authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly } = require('../middleware/auth.middleware');
+const {
+  authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly, requireChiefAdminScreen,
+} = require('../middleware/auth.middleware');
 const { Client } = require('../models');
 const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
 const clientCtrl = require('../controllers/client.controller');
@@ -32,7 +34,7 @@ async function assignedClientOnly(req, res, next) {
   return next();
 }
 
-router.post('/', clientCtrl.createClient);
+router.post('/', requireChiefAdminScreen('create-client'), clientCtrl.createClient);
 router.get('/', clientCtrl.listClients);
 router.get('/marketing-persons', clientCtrl.listMarketingPersons);
 router.get('/next-code', clientCtrl.previewNextClientCode);
@@ -40,7 +42,7 @@ router.get('/:id', assignedClientOnly, clientCtrl.getClient);
 router.put('/:id', requireAdminRole, clientCtrl.updateClient);
 // Opens this client's app as their auto-provisioned support login - ADMIN for
 // any client; MARKETING only for clients assigned to them (assignedClientOnly).
-router.post('/:id/impersonate', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING), assignedClientOnly, clientCtrl.impersonateClient);
+router.post('/:id/impersonate', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING, CHIEF_ADMIN_ROLES.MARKETING_LEAD), assignedClientOnly, clientCtrl.impersonateClient);
 
 router.get('/:clientId/subscriptions', assignedClientOnly, subCtrl.listSubscriptions);
 // Correct one cycle's dates (backdating allowed) and amount - ADMIN only, money-touching.
@@ -65,7 +67,7 @@ router.post('/:clientId/users', requireAdminRole, userCtrl.createUser);
 router.get('/:clientId/users', assignedClientOnly, userCtrl.listUsers);
 router.put('/:clientId/users/:userId', requireAdminRole, userCtrl.updateUser);
 // Password-only reset: ADMIN, or MARKETING for their own assigned clients.
-router.put('/:clientId/users/:userId/reset-password', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING), assignedClientOnly, userCtrl.resetUserPassword);
+router.put('/:clientId/users/:userId/reset-password', requireChiefAdminScreen('team-passwords'), assignedClientOnly, userCtrl.resetUserPassword);
 router.post('/:clientId/users/:userId/signature', requireAdminRole, upload.single('signature'), userCtrl.uploadSignature);
 
 router.get('/:clientId/test-prices', assignedClientOnly, priceCtrl.listPrices);

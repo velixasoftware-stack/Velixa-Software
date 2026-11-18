@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { ChiefAdmin, Client, ClientUser, Role } = require('../models');
+const { SALES_ROLES } = require('../utils/roles');
 const { signToken } = require('../utils/jwt');
 const { syncClientPaymentStatus } = require('./subscription.controller');
 const { createInitialSubscription, generateClientCode, mintSystemUserSession } = require('./client.controller');
@@ -76,7 +77,7 @@ async function clientUserLogin(req, res) {
     const chiefAdminOk = chiefAdmin && chiefAdmin.active && (await bcrypt.compare(password, chiefAdmin.passwordHash));
     // ADMIN may do this for any client; MARKETING only for clients assigned to them.
     const isAdmin = chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'ADMIN');
-    const isAssignedMarketing = chiefAdminOk && chiefAdmin.Roles.some((r) => r.name === 'MARKETING')
+    const isAssignedMarketing = chiefAdminOk && chiefAdmin.Roles.some((r) => SALES_ROLES.includes(r.name))
       && (client.salesPerson || '').toLowerCase() === chiefAdmin.username.toLowerCase();
     if (isAdmin || isAssignedMarketing) {
       const session = await mintSystemUserSession(client, locationId);

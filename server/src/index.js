@@ -5,7 +5,8 @@ const express = require('express');
 require('express-async-errors'); // makes thrown/rejected errors in async route handlers reach the error middleware instead of crashing the process
 const cors = require('cors');
 const helmet = require('helmet');
-const { sequelize } = require('./models');
+const { sequelize, Role } = require('./models');
+const { ALL_CHIEF_ADMIN_ROLES } = require('./utils/roles');
 const routes = require('./routes');
 const { expireOverdueSubscriptions } = require('./controllers/subscription.controller');
 const { backfillSystemUsers } = require('./controllers/client.controller');
@@ -144,6 +145,8 @@ async function start() {
     'UPDATE bill b SET "locationId" = l.id FROM client_location l WHERE l."clientId" = b."clientId" AND l."isMain" AND b."locationId" IS NULL',
     'UPDATE sample s SET "locationId" = l.id FROM client_location l WHERE l."clientId" = s."clientId" AND l."isMain" AND s."locationId" IS NULL',
   ].join(';\n'));
+  // Every Chief Admin role (e.g. MARKETING_LEAD, added later) must exist as a Role row to be assignable.
+  for (const name of ALL_CHIEF_ADMIN_ROLES) await Role.findOrCreate({ where: { name } }); // eslint-disable-line no-await-in-loop
   await ensureFirstChiefAdmin();
   await seedDefaultPatientTitles();
   await backfillStoredFiles();

@@ -1,6 +1,7 @@
 const { verifyToken } = require('../utils/jwt');
-const { ChiefAdmin, ClientUser, Client, Role } = require('../models');
+const { ChiefAdmin, ClientUser, Client, Role, ChiefAdminRoleScreen } = require('../models');
 const { runWithActor } = require('../utils/auditContext');
+const { SALES_ROLES, SALES_SCREEN_KEYS, BUILTIN_SALES_ROLE_SCREENS } = require('../utils/roles');
 
 /**
  * Verifies the JWT and attaches `req.user`, re-deriving roles/active status
@@ -87,7 +88,42 @@ function requireChiefAdminRole(...allowedRoles) {
  */
 function isMarketingOnly(req) {
   const roles = req.user?.roles || [];
-  return req.user?.type === 'CHIEF_ADMIN' && roles.includes('MARKETING') && !roles.includes('ADMIN');
+  return req.user?.type === 'CHIEF_ADMIN' && roles.some((r) => SALES_ROLES.includes(r)) && !roles.includes('ADMIN');
 }
 
-module.exports = { authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly };
+/** The Chief Admin screens a sales role has: ADMIN's saved choice, else the built-in list. */
+async function salesRoleScreens() {
+  const rows = await ChiefAdminRoleScreen.findAll({ where: { role: SALES_ROLES } });
+  const saved = new Map(rows.map((r) => [r.role, r.screens]));
+  return Object.fromEntries(SALES_ROLES.map((role) => [
+    role, (saved.get(role) || BUILTIN_SALES_ROLE_SCREENS[role] || []).filter((k) => SALES_SCREEN_KEYS.includes(k)),
+  ]));
+}
+
+/** Screens the signed-in Chief Admin user can open (ADMIN: all of them). */
+async function chiefAdminScreensFor(req) {
+  const roles = req.user?.roles || [];
+  if (roles.includes('ADMIN')) return [...SALES_SCREEN_KEYS];
+  const byRole = await salesRoleScreens();
+  return [...new Set(roles.flatMap((r) => byRole[r] || []))];
+}
+
+/**
+ * Lets ADMIN through, and a sales user only when one of their roles has been
+ * given this screen (Chief Admin > Sales Role Screens) - enforced here, not
+ * just by hiding the menu item.
+ */
+function requireChiefAdminScreen(screenKey) {
+  return async (req, res, next) => {
+    if (req.user?.type !== 'CHIEF_ADMIN') return res.status(403).json({ message: 'Chief Admin access required' });
+    if ((req.user.roles || []).includes('ADMIN')) return next();
+    const screens = await chiefAdminScreensFor(req);
+    if (screens.includes(screenKey)) return next();
+    return res.status(403).json({ message: 'This screen is not assigned to your role' });
+  };
+}
+
+module.exports = {
+  authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly,
+  salesRoleScreens, chiefAdminScreensFor, requireChiefAdminScreen,
+};

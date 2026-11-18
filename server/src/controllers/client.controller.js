@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const {
   Client, ClientSubscription, ClientUser, ClientLocation, Role, ChiefAdmin, Bill, ClientPayment, sequelize,
 } = require('../models');
+const { SALES_ROLES } = require('../utils/roles');
 const { activeLocations, resolveLoginLocation, locationInfo } = require('../utils/location');
 const { Op, fn, col } = require('sequelize');
 const { calculatePlanAmount } = require('../utils/pricing');
@@ -553,11 +554,9 @@ async function updateClient(req, res) {
 
 // GET /api/clients/marketing-persons  (any Chief-Admin type - used by the Sales Person picker)
 async function listMarketingPersons(req, res) {
-  const marketingRole = await Role.findOne({ where: { name: 'MARKETING' } });
-  if (!marketingRole) return res.json([]);
-
+  // Marketing and Marketing Lead users can both be a client's Sales Person.
   const users = await ChiefAdmin.findAll({
-    include: [{ model: Role, where: { id: marketingRole.id }, through: { attributes: [] } }],
+    include: [{ model: Role, where: { name: SALES_ROLES }, through: { attributes: [] } }],
     attributes: ['id', 'username', 'name'],
     where: { active: true },
   });

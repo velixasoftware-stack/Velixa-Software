@@ -14,6 +14,7 @@ import ChiefAdminUsers from './pages/ChiefAdmin/ChiefAdminUsers';
 import TestRemoval from './pages/ChiefAdmin/TestRemoval';
 import ClientSetupCopy from './pages/ChiefAdmin/ClientSetupCopy';
 import RemovedParameters from './pages/ChiefAdmin/RemovedParameters';
+import SalesRoleScreens from './pages/ChiefAdmin/SalesRoleScreens';
 import ClientDataReset from './pages/ChiefAdmin/ClientDataReset';
 import PublicReport from './pages/PublicReport';
 import ChiefAdminTickets from './pages/ChiefAdmin/Tickets';
@@ -55,7 +56,7 @@ export default function App() {
         element={<ProtectedRoute type="CHIEF_ADMIN"><ChiefAdminLayout /></ProtectedRoute>}
       >
         <Route index element={<ChiefAdminDashboard />} />
-        <Route path="clients/new" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ClientCreate /></ProtectedRoute>} />
+        <Route path="clients/new" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ClientCreate /></ProtectedRoute>} />
         <Route path="clients/:id" element={<ClientDetail />} />
         <Route path="masters" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminMasters /></ProtectedRoute>} />
         <Route path="patient-titles" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><PatientTitles /></ProtectedRoute>} />
@@ -63,11 +64,12 @@ export default function App() {
         <Route path="client-setup-copy" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientSetupCopy /></ProtectedRoute>} />
         <Route path="removed-parameters" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><RemovedParameters /></ProtectedRoute>} />
         <Route path="data-reset" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientDataReset /></ProtectedRoute>} />
-        <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ChiefAdminUsers /></ProtectedRoute>} />
-        <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><ChiefAdminTickets /></ProtectedRoute>} />
+        <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ChiefAdminUsers /></ProtectedRoute>} />
+        <Route path="sales-role-screens" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><SalesRoleScreens /></ProtectedRoute>} />
+        <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ChiefAdminTickets /></ProtectedRoute>} />
         <Route path="integrations" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Integrations /></ProtectedRoute>} />
-        <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><SalesDashboard /></ProtectedRoute>} />
-        <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING']}><TeamPasswordReset /></ProtectedRoute>} />
+        <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><SalesDashboard /></ProtectedRoute>} />
+        <Route path="team-passwords" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><TeamPasswordReset /></ProtectedRoute>} />
         <Route path="role-screen-defaults" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><RoleScreenDefaults /></ProtectedRoute>} />
         <Route path="announcements" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><Announcements /></ProtectedRoute>} />
         <Route path="reset-password" element={<ProtectedRoute type="CHIEF_ADMIN"><ResetPassword /></ProtectedRoute>} />

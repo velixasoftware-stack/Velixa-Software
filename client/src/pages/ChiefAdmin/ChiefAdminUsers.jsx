@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import RoleCheckboxes, { CHIEF_ADMIN_ROLE_OPTIONS } from '../../components/RoleCheckboxes';
+import { useAuth } from '../../context/AuthContext';
 
 function blankUser() {
   return { username: '', password: '', name: '', roleNames: ['MARKETING'] };
 }
 
 export default function ChiefAdminUsers() {
+  // ADMIN manages the team; a sales role given "Team (view)" only sees it.
+  const { auth } = useAuth();
+  const isAdmin = (auth?.user?.roles || []).includes('ADMIN');
   const [users, setUsers] = useState([]);
   const [userCount, setUserCount] = useState(1);
   const [userRows, setUserRows] = useState([blankUser()]);
@@ -91,10 +95,12 @@ export default function ChiefAdminUsers() {
 
   return (
     <div>
+      {isAdmin && (
       <div className="card">
         <h3>Create Chief Admin Users</h3>
         <p style={{ fontSize: 13, color: '#64748b' }}>
-          e.g. an <strong>ADMIN</strong> user with full access, or a <strong>MARKETING</strong> user who can onboard clients.
+          e.g. an <strong>ADMIN</strong> user with full access, a <strong>MARKETING</strong> user who can onboard clients, or a
+          {' '}<strong>MARKETING LEAD</strong>. Which screens Marketing and Marketing Lead get is set in Sales Role Screens.
         </p>
         <form onSubmit={handleCreate}>
           <div className="form-grid">
@@ -125,6 +131,7 @@ export default function ChiefAdminUsers() {
           <button type="submit" style={{ marginTop: 16 }}>Create Users</button>
         </form>
       </div>
+      )}
 
       <div className="card">
         <h3>Chief Admin Team</h3>
@@ -136,14 +143,16 @@ export default function ChiefAdminUsers() {
                 <td>{u.username}</td>
                 <td>{u.name}</td>
                 <td style={{ minWidth: 220 }}>
-                  <RoleCheckboxes options={CHIEF_ADMIN_ROLE_OPTIONS} value={rolesFor(u)} onChange={(roleNames) => setRoleEdits((edits) => ({ ...edits, [u.id]: roleNames }))} />
+                  <RoleCheckboxes options={CHIEF_ADMIN_ROLE_OPTIONS} value={rolesFor(u)} disabled={!isAdmin} onChange={(roleNames) => setRoleEdits((edits) => ({ ...edits, [u.id]: roleNames }))} />
                 </td>
                 <td>{u.active ? 'Yes' : 'No'}</td>
                 <td style={{ display: 'flex', gap: 6 }}>
-                  {roleEdits[u.id] && <button type="button" onClick={() => saveRoles(u.id)}>Save Roles</button>}
-                  <button type="button" className="secondary" onClick={() => toggleActive(u)}>
-                    {u.active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  {isAdmin && roleEdits[u.id] && <button type="button" onClick={() => saveRoles(u.id)}>Save Roles</button>}
+                  {isAdmin && (
+                    <button type="button" className="secondary" onClick={() => toggleActive(u)}>
+                      {u.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

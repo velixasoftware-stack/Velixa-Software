@@ -16,9 +16,23 @@ const ALL_ROLES = Object.values(ROLES);
 const CHIEF_ADMIN_ROLES = {
   ADMIN: 'ADMIN',
   MARKETING: 'MARKETING',
+  MARKETING_LEAD: 'MARKETING_LEAD',
 };
 
 const ALL_CHIEF_ADMIN_ROLES = Object.values(CHIEF_ADMIN_ROLES);
+
+// The sales roles: each user sees only the clients assigned to them (as
+// salesPerson). Which Chief Admin screens each sales role gets is set by
+// ADMIN (Chief Admin > Sales Role Screens); the Dashboard (their clients) is always on.
+const SALES_ROLES = [CHIEF_ADMIN_ROLES.MARKETING, CHIEF_ADMIN_ROLES.MARKETING_LEAD];
+// Screens ADMIN may give a sales role - "sales-safe" ones only; setup and
+// money screens (Test Master, Data Reset, Integrations ...) stay ADMIN-only.
+const SALES_SCREEN_KEYS = ['create-client', 'tickets', 'team-passwords', 'sales-dashboard', 'team-view'];
+// Used until ADMIN saves a choice for the role - what MARKETING always had.
+const BUILTIN_SALES_ROLE_SCREENS = {
+  MARKETING: ['create-client', 'tickets', 'team-passwords', 'sales-dashboard'],
+  MARKETING_LEAD: ['create-client', 'tickets', 'team-passwords', 'sales-dashboard', 'team-view'],
+};
 
 // Every screen a client-side role can be granted access to, and which of the
 // client-side roles have their screen access configurable at all (ADMIN
@@ -39,4 +53,5 @@ const BUILTIN_ROLE_SCREEN_DEFAULTS = {
 module.exports = {
   ROLES, ALL_ROLES, CHIEF_ADMIN_ROLES, ALL_CHIEF_ADMIN_ROLES,
   ALL_SCREEN_KEYS, CONFIGURABLE_ROLES, BUILTIN_ROLE_SCREEN_DEFAULTS,
+  SALES_ROLES, SALES_SCREEN_KEYS, BUILTIN_SALES_ROLE_SCREENS,
 };

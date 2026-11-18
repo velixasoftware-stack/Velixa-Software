@@ -62,6 +62,15 @@ const RoleScreenDefault = sequelize.define('RoleScreenDefault', {
   ...AUDIT_FIELDS,
 }, { tableName: 'role_screen_default' });
 
+// Chief Admin side: which Chief Admin screens a sales role (MARKETING,
+// MARKETING_LEAD) gets - set by ADMIN. No row = the built-in list in utils/roles.js.
+const ChiefAdminRoleScreen = sequelize.define('ChiefAdminRoleScreen', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  role: { type: DataTypes.STRING, unique: true, allowNull: false },
+  screens: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+  ...AUDIT_FIELDS,
+}, { tableName: 'chief_admin_role_screen' });
+
 // Per-client override - lets each client's own ADMIN restrict which screens
 // their FRONT_OFFICE/LAB_USER/MANAGER/MASTER_MANAGER staff can see.
 const ClientRoleScreen = sequelize.define('ClientRoleScreen', {
@@ -1014,6 +1023,7 @@ module.exports = {
   NotificationSetting,
   NotificationTemplate,
   RoleScreenDefault,
+  ChiefAdminRoleScreen,
   ClientRoleScreen,
   Client,
   ClientSubscription,

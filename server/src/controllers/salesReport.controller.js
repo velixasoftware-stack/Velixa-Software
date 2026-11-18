@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const { Op } = require('sequelize');
 const { Client, ChiefAdmin, Role, ClientPayment } = require('../models');
+const { SALES_ROLES } = require('../utils/roles');
 const { isMarketingOnly } = require('../middleware/auth.middleware');
 
 // Filters by `column` falling within [from, to] (either end optional, `to`
@@ -35,12 +36,10 @@ function dateRangeWhereOn(column, from, to) {
 // (counts and revenue) to their own clients.
 async function buildSalesReportData(from, to, onlySalesPerson = null) {
   const mine = (sp) => !onlySalesPerson || (sp || '').toLowerCase() === onlySalesPerson.toLowerCase();
-  const marketingRole = await Role.findOne({ where: { name: 'MARKETING' } });
-  const marketingUsers = marketingRole
-    ? await ChiefAdmin.findAll({
-        include: [{ model: Role, where: { id: marketingRole.id }, through: { attributes: [] } }],
-      })
-    : [];
+  // Every sales person - Marketing and Marketing Lead users.
+  const marketingUsers = await ChiefAdmin.findAll({
+    include: [{ model: Role, where: { name: SALES_ROLES }, through: { attributes: [] } }],
+  });
 
   const summaryMap = new Map();
   for (const u of marketingUsers) {

@@ -2,10 +2,11 @@
 // at creation time - that concept only exists for Chief-Admin-side staff,
 // picked from CHIEF_ADMIN_ROLE_OPTIONS on the Team screen.
 export const ROLE_OPTIONS = ['FRONT_OFFICE', 'LAB_USER', 'MANAGER', 'MASTER_MANAGER'];
-export const CHIEF_ADMIN_ROLE_OPTIONS = ['ADMIN', 'MARKETING'];
+export const CHIEF_ADMIN_ROLE_OPTIONS = ['ADMIN', 'MARKETING', 'MARKETING_LEAD'];
+const ROLE_TEXT = { MARKETING_LEAD: 'MARKETING LEAD' };
 
-/** Lets a single user be assigned more than one role at once. */
-export default function RoleCheckboxes({ value, onChange, options = ROLE_OPTIONS }) {
+/** Lets a single user be assigned more than one role at once. disabled = view only. */
+export default function RoleCheckboxes({ value, onChange, options = ROLE_OPTIONS, disabled = false }) {
   function toggle(role) {
     onChange(value.includes(role) ? value.filter((r) => r !== role) : [...value, role]);
   }
@@ -19,8 +20,9 @@ export default function RoleCheckboxes({ value, onChange, options = ROLE_OPTIONS
             style={{ width: 'auto' }}
             checked={value.includes(role)}
             onChange={() => toggle(role)}
+            disabled={disabled}
           />
-          {role}
+          {ROLE_TEXT[role] || role}
         </label>
       ))}
     </div>

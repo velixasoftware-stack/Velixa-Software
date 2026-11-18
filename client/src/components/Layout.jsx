@@ -112,8 +112,15 @@ export function ChiefAdminLayout() {
   const { auth, logout } = useAuth();
   const roles = auth?.user?.roles || [];
   const isAdmin = roles.includes('ADMIN');
-  const isMarketing = roles.includes('MARKETING');
+  const isSales = !isAdmin && roles.some((r) => r === 'MARKETING' || r === 'MARKETING_LEAD');
   const [navOpen, setNavOpen] = useState(false);
+  // A sales role's menu: the screens ADMIN gave it (Chief Admin > Sales Role Screens).
+  const [salesScreens, setSalesScreens] = useState([]);
+  useEffect(() => {
+    if (!isSales) return;
+    api.get('/chief-admin-role-screens/mine').then((r) => setSalesScreens(r.data.screens || [])).catch(() => setSalesScreens([]));
+  }, [isSales]);
+  const hasScreen = (key) => salesScreens.includes(key);
 
   return (
     <div className="app-shell">
@@ -138,18 +145,20 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/integrations"><Icon name="plug" size={17} /><span>Integrations</span></NavLink>
               <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
               <NavLink to="/chief-admin/role-screen-defaults"><Icon name="branding" size={17} /><span>Role Screen Defaults</span></NavLink>
+              <NavLink to="/chief-admin/sales-role-screens"><Icon name="branding" size={17} /><span>Sales Role Screens</span></NavLink>
               <NavLink to="/chief-admin/announcements"><Icon name="sparkle" size={17} /><span>Login Captions</span></NavLink>
             </div>
           )}
-          {/* MARKETING: their own clients only - create clients (auto-assigned to them),
-              tickets from their clients, Sales Dashboard. No Team / Reset Passwords. */}
-          {!isAdmin && isMarketing && (
+          {/* MARKETING / MARKETING LEAD: their own clients only, and only the
+              screens ADMIN gave their role (Sales Role Screens). */}
+          {isSales && salesScreens.length > 0 && (
             <div className="nav-group nav-group-administration">
               <div className="nav-group-label">Sales</div>
-              <NavLink to="/chief-admin/clients/new"><Icon name="building" size={17} /><span>Create Client</span></NavLink>
-              <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>
-              <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>
-              <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
+              {hasScreen('create-client') && <NavLink to="/chief-admin/clients/new"><Icon name="building" size={17} /><span>Create Client</span></NavLink>}
+              {hasScreen('tickets') && <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>}
+              {hasScreen('team-passwords') && <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>}
+              {hasScreen('sales-dashboard') && <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>}
+              {hasScreen('team-view') && <NavLink to="/chief-admin/users"><Icon name="team" size={17} /><span>Team</span></NavLink>}
             </div>
           )}
           <div className="nav-group-label">Account</div>

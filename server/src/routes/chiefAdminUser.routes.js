@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { authenticate, requireChiefAdminRole } = require('../middleware/auth.middleware');
+const { authenticate, requireChiefAdminRole, requireChiefAdminScreen } = require('../middleware/auth.middleware');
 const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
 const ctrl = require('../controllers/chiefAdminUser.controller');
 const salesReportCtrl = require('../controllers/salesReport.controller');
@@ -8,9 +8,12 @@ router.use(authenticate);
 
 // Sales Dashboard: ADMIN sees everyone; a MARKETING user sees only their own
 // clients, without the total monthly revenue figures (see salesReport.controller).
-const salesAccess = requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN, CHIEF_ADMIN_ROLES.MARKETING);
+const salesAccess = requireChiefAdminScreen('sales-dashboard');
 router.get('/sales-report', salesAccess, salesReportCtrl.getSalesReport);
 router.get('/sales-report/export', salesAccess, salesReportCtrl.exportSalesReport);
+
+// Team list, read-only: ADMIN, or a sales role given the "Team (view)" screen.
+router.get('/', requireChiefAdminScreen('team-view'), ctrl.listChiefAdminUsers);
 
 // Everything else that manages Chief-Admin-side staff accounts (creating them,
 // editing roles/active status, the sales report) is ADMIN-only.
@@ -18,7 +21,6 @@ router.use(requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN));
 
 // Team (listing, creating, editing and resetting passwords of Chief-Admin-side
 // staff) is ADMIN only - not part of a MARKETING user's screens.
-router.get('/', ctrl.listChiefAdminUsers);
 router.put('/:id/reset-password', ctrl.resetPassword);
 router.post('/', ctrl.createChiefAdminUser);
 router.post('/bulk', ctrl.createChiefAdminUsersBulk);
