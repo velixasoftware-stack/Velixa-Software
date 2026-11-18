@@ -155,10 +155,19 @@ export function ChiefAdminLayout() {
             <div className="nav-group nav-group-administration">
               <div className="nav-group-label">Sales</div>
               {hasScreen('create-client') && <NavLink to="/chief-admin/clients/new"><Icon name="building" size={17} /><span>Create Client</span></NavLink>}
-              {hasScreen('tickets') && <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>}
-              {hasScreen('team-passwords') && <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>}
-              {hasScreen('sales-dashboard') && <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>}
+              {hasScreen('masters') && <NavLink to="/chief-admin/masters"><Icon name="masters" size={17} /><span>Test Master</span></NavLink>}
+              {hasScreen('patient-titles') && <NavLink to="/chief-admin/patient-titles"><Icon name="user" size={17} /><span>Patient Titles</span></NavLink>}
+              {hasScreen('test-removal') && <NavLink to="/chief-admin/test-removal"><Icon name="close" size={17} /><span>Test Removal</span></NavLink>}
+              {hasScreen('client-setup-copy') && <NavLink to="/chief-admin/client-setup-copy"><Icon name="masters" size={17} /><span>Copy Client Setup</span></NavLink>}
+              {hasScreen('removed-parameters') && <NavLink to="/chief-admin/removed-parameters"><Icon name="masters" size={17} /><span>Removed Parameters</span></NavLink>}
+              {hasScreen('data-reset') && <NavLink to="/chief-admin/data-reset"><Icon name="trash" size={17} /><span>Client Data Reset</span></NavLink>}
               {hasScreen('team-view') && <NavLink to="/chief-admin/users"><Icon name="team" size={17} /><span>Team</span></NavLink>}
+              {hasScreen('team-passwords') && <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>}
+              {hasScreen('tickets') && <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>}
+              {hasScreen('integrations') && <NavLink to="/chief-admin/integrations"><Icon name="plug" size={17} /><span>Integrations</span></NavLink>}
+              {hasScreen('sales-dashboard') && <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>}
+              {hasScreen('role-screen-defaults') && <NavLink to="/chief-admin/role-screen-defaults"><Icon name="branding" size={17} /><span>Role Screen Defaults</span></NavLink>}
+              {hasScreen('announcements') && <NavLink to="/chief-admin/announcements"><Icon name="sparkle" size={17} /><span>Login Captions</span></NavLink>}
             </div>
           )}
           <div className="nav-group-label">Account</div>

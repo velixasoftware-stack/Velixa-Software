@@ -113,17 +113,30 @@ async function chiefAdminScreensFor(req) {
  * given this screen (Chief Admin > Sales Role Screens) - enforced here, not
  * just by hiding the menu item.
  */
-function requireChiefAdminScreen(screenKey) {
+function requireChiefAdminScreen(...screenKeys) {
   return async (req, res, next) => {
     if (req.user?.type !== 'CHIEF_ADMIN') return res.status(403).json({ message: 'Chief Admin access required' });
     if ((req.user.roles || []).includes('ADMIN')) return next();
     const screens = await chiefAdminScreensFor(req);
-    if (screens.includes(screenKey)) return next();
+    if (screenKeys.some((k) => screens.includes(k))) return next();
     return res.status(403).json({ message: 'This screen is not assigned to your role' });
   };
 }
 
+/**
+ * A sales (MARKETING / MARKETING_LEAD) user may act only on clients assigned
+ * to them. True for ADMIN, or when every given client id is theirs.
+ */
+async function clientsAssignedToRequester(req, clientIds) {
+  if (!isMarketingOnly(req)) return true;
+  const ids = [...new Set(clientIds.map(Number).filter(Boolean))];
+  if (ids.length === 0) return true;
+  const clients = await Client.findAll({ where: { id: ids }, attributes: ['id', 'salesPerson'] });
+  const me = (req.user.username || '').toLowerCase();
+  return clients.length === ids.length && clients.every((c) => (c.salesPerson || '').toLowerCase() === me);
+}
+
 module.exports = {
   authenticate, requireChiefAdmin, requireChiefAdminRole, isMarketingOnly,
-  salesRoleScreens, chiefAdminScreensFor, requireChiefAdminScreen,
+  salesRoleScreens, chiefAdminScreensFor, requireChiefAdminScreen, clientsAssignedToRequester,
 };

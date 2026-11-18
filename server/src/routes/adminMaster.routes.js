@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const multer = require('multer');
-const { authenticate, requireChiefAdminRole } = require('../middleware/auth.middleware');
-const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
+const { authenticate, requireChiefAdminScreen } = require('../middleware/auth.middleware');
 const { runWithActor, getCurrentActor } = require('../utils/auditContext');
 const testCtrl = require('../controllers/testMaster.controller');
 const titleCtrl = require('../controllers/patientTitle.controller');
@@ -23,7 +22,12 @@ function uploadFile(req, res, next) {
 // Chief Admin can also manage the global Test Master (same central data
 // client-side MASTER_MANAGER users manage under /api/masters/tests).
 // Restricted to the ADMIN role - Marketing staff don't touch master data.
-router.use(authenticate, requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN));
+// ADMIN, or a sales role given the screen (Sales Role Screens): Patient Titles,
+// Test Master, and Test Removal (which works on the same tests list).
+router.use(authenticate);
+router.use('/patient-titles', requireChiefAdminScreen('patient-titles'));
+router.use('/tests', requireChiefAdminScreen('masters', 'test-removal'));
+router.use(['/groups', '/parameters'], requireChiefAdminScreen('masters'));
 
 router.get('/groups', testCtrl.listTestGroups);
 router.post('/groups', testCtrl.createTestGroup);

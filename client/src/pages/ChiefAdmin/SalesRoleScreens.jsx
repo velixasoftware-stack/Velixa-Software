@@ -4,10 +4,19 @@ import api from '../../api/client';
 // The Chief Admin screens ADMIN can give a sales role (keys match the server).
 export const SALES_SCREENS = [
   { key: 'create-client', label: 'Create Client', hint: 'Onboard new clients - always assigned to themselves' },
-  { key: 'tickets', label: 'Tickets', hint: 'Tickets from their own clients' },
-  { key: 'team-passwords', label: 'Reset Passwords', hint: 'Reset passwords of their own clients\' users' },
-  { key: 'sales-dashboard', label: 'Sales Dashboard', hint: 'Their own clients\' sales figures' },
+  { key: 'masters', label: 'Test Master', hint: 'Shared tests and parameters - changes apply to every client' },
+  { key: 'patient-titles', label: 'Patient Titles', hint: "Mr./Mrs./... offered in every client's billing" },
+  { key: 'test-removal', label: 'Test Removal', hint: 'Make tests inactive or delete them - for every client' },
+  { key: 'client-setup-copy', label: 'Copy Client Setup', hint: 'Only between their own clients' },
+  { key: 'removed-parameters', label: 'Removed Parameters', hint: 'Restore removed parameters - their own clients' },
+  { key: 'data-reset', label: 'Client Data Reset', hint: "Delete a client's data - their own clients only" },
   { key: 'team-view', label: 'Team (view only)', hint: 'See the Chief Admin team list - cannot change it' },
+  { key: 'team-passwords', label: 'Reset Passwords', hint: "Reset passwords of their own clients' users" },
+  { key: 'tickets', label: 'Tickets', hint: 'Tickets from their own clients' },
+  { key: 'integrations', label: 'Integrations', hint: 'Email / WhatsApp settings and templates - platform-wide' },
+  { key: 'sales-dashboard', label: 'Sales Dashboard', hint: "Their own clients' sales figures" },
+  { key: 'role-screen-defaults', label: 'Role Screen Defaults', hint: 'Default screens of client roles - platform-wide' },
+  { key: 'announcements', label: 'Login Captions', hint: 'Captions on the login page - platform-wide' },
 ];
 
 const SALES_ROLES = [
@@ -64,8 +73,9 @@ export default function SalesRoleScreens() {
         <h3 style={{ margin: 0 }}>Sales Role Screens</h3>
         <p className="cell-sub" style={{ margin: '2px 0 0' }}>
           Choose which Chief Admin screens the <strong>Marketing</strong> and <strong>Marketing Lead</strong> roles get. Both always
-          have the Dashboard and only ever see the clients assigned to them. Setup and money screens (Test Master, Client Data Reset,
-          Integrations, Copy Client Setup …) stay Admin-only. Assign the roles to people on the Team screen.
+          have the Dashboard and only ever see the clients assigned to them; client screens (Data Reset, Copy Setup, Removed
+          Parameters …) cover only their own clients. Screens marked "platform-wide" change things for every client. Team
+          management and this page stay Admin-only. Assign the roles to people on the Team screen.
         </p>
         {error && <p className="error-text">{error}</p>}
         {message && <p style={{ color: '#166534' }}>{message}</p>}

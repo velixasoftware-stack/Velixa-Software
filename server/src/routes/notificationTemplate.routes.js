@@ -1,9 +1,9 @@
 const router = require('express').Router();
-const { authenticate, requireChiefAdminRole } = require('../middleware/auth.middleware');
-const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
+const { authenticate, requireChiefAdminScreen } = require('../middleware/auth.middleware');
 const ctrl = require('../controllers/notificationTemplate.controller');
 
-router.use(authenticate, requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN));
+// ADMIN, or a sales role given the Integrations screen.
+router.use(authenticate, requireChiefAdminScreen('integrations'));
 
 router.get('/', ctrl.listTemplates);
 router.post('/', ctrl.createTemplate);

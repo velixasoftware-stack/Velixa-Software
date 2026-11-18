@@ -55,9 +55,10 @@ router.get('/:clientId/revenue', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN),
 // A promotional free period for an existing client - ADMIN only, money-related like manual-payment above.
 router.post('/:clientId/free-days', requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN), subCtrl.grantFreeDays);
 // Client Data Reset - ADMIN only: see, back up and remove one client's data by area.
-router.get('/:clientId/data-summary', requireAdminRole, resetCtrl.getDataSummary);
-router.get('/:clientId/data-export', requireAdminRole, resetCtrl.exportClientData);
-router.post('/:clientId/data-reset', requireAdminRole, resetCtrl.resetClientData);
+// ADMIN, or a sales role given the Client Data Reset screen - own clients only.
+router.get('/:clientId/data-summary', requireChiefAdminScreen('data-reset'), assignedClientOnly, resetCtrl.getDataSummary);
+router.get('/:clientId/data-export', requireChiefAdminScreen('data-reset'), assignedClientOnly, resetCtrl.exportClientData);
+router.post('/:clientId/data-reset', requireChiefAdminScreen('data-reset'), assignedClientOnly, resetCtrl.resetClientData);
 
 router.get('/:clientId/locations', assignedClientOnly, locationCtrl.listLocations);
 router.post('/:clientId/locations', requireAdminRole, locationCtrl.createLocation);

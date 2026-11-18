@@ -25,9 +25,15 @@ const ALL_CHIEF_ADMIN_ROLES = Object.values(CHIEF_ADMIN_ROLES);
 // salesPerson). Which Chief Admin screens each sales role gets is set by
 // ADMIN (Chief Admin > Sales Role Screens); the Dashboard (their clients) is always on.
 const SALES_ROLES = [CHIEF_ADMIN_ROLES.MARKETING, CHIEF_ADMIN_ROLES.MARKETING_LEAD];
-// Screens ADMIN may give a sales role - "sales-safe" ones only; setup and
-// money screens (Test Master, Data Reset, Integrations ...) stay ADMIN-only.
-const SALES_SCREEN_KEYS = ['create-client', 'tickets', 'team-passwords', 'sales-dashboard', 'team-view'];
+// Every Chief Admin screen ADMIN may give a sales role. Only two stay
+// ADMIN-only, as handing them out would let a sales user make themselves
+// ADMIN: Team management (creating users / changing roles) and Sales Role
+// Screens itself. Client-specific screens still cover only the user's own clients.
+const SALES_SCREEN_KEYS = [
+  'create-client', 'masters', 'patient-titles', 'test-removal', 'client-setup-copy', 'removed-parameters',
+  'data-reset', 'team-view', 'team-passwords', 'tickets', 'integrations', 'sales-dashboard',
+  'role-screen-defaults', 'announcements',
+];
 // Used until ADMIN saves a choice for the role - what MARKETING always had.
 const BUILTIN_SALES_ROLE_SCREENS = {
   MARKETING: ['create-client', 'tickets', 'team-passwords', 'sales-dashboard'],

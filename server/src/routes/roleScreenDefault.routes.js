@@ -1,10 +1,10 @@
 const router = require('express').Router();
-const { authenticate, requireChiefAdminRole } = require('../middleware/auth.middleware');
-const { CHIEF_ADMIN_ROLES } = require('../utils/roles');
+const { authenticate, requireChiefAdminScreen } = require('../middleware/auth.middleware');
 const ctrl = require('../controllers/roleScreen.controller');
 
 // The platform-wide baseline is Chief-Admin (ADMIN) territory only.
-router.use(authenticate, requireChiefAdminRole(CHIEF_ADMIN_ROLES.ADMIN));
+// ADMIN, or a sales role given the Role Screen Defaults screen.
+router.use(authenticate, requireChiefAdminScreen('role-screen-defaults'));
 
 router.get('/', ctrl.getRoleScreenDefaults);
 router.put('/', ctrl.updateRoleScreenDefault);
