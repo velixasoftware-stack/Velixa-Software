@@ -154,12 +154,34 @@ async function createTestGroup(req, res) {
   return res.status(201).json(group);
 }
 
+// Test codes for new tests: "TC" plus the next number after the highest "TC"
+// number in use (existing codes look like TC0153, TC81019). A client's new
+// test always gets one; Chief Admin gets one when it leaves the box empty.
+async function generateTestCode() {
+  const existing = await TestMaster.findAll({ attributes: ['testCode'] });
+  let maxN = 0;
+  for (const t of existing) {
+    const match = t.testCode?.match(/^TC(\d+)$/i);
+    if (match) maxN = Math.max(maxN, parseInt(match[1], 10));
+  }
+  let n = maxN + 1;
+  let code = `TC${String(n).padStart(4, '0')}`;
+  while (await TestMaster.findOne({ where: { testCode: code } })) {
+    n += 1;
+    code = `TC${String(n).padStart(4, '0')}`;
+  }
+  return code;
+}
+
 // POST /api/masters/tests
 async function createTest(req, res) {
-  const { testCode, testName, category, sampleType, interpretation, parameters } = req.body;
-  if (!testCode || !testName) {
-    return res.status(400).json({ message: 'testCode and testName are required' });
+  const { testName, category, sampleType, interpretation, parameters } = req.body;
+  if (!testName) {
+    return res.status(400).json({ message: 'Test Name is required' });
   }
+  // A client never types a test code - it's generated (as for Chief Admin when left blank).
+  const typedCode = requesterClientId(req) ? '' : String(req.body.testCode || '').trim();
+  const testCode = typedCode || await generateTestCode();
   const testType = normalizeTestType(req.body.testType);
   if (testType === null) return res.status(400).json({ message: 'Test Type must be Regular, Fasting or Post Lunch' });
 

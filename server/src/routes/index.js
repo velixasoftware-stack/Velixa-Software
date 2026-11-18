@@ -7,6 +7,7 @@ router.use('/payments', require('./payment.routes'));
 router.use('/masters', require('./master.routes'));
 router.use('/test-config', require('./testConfig.routes'));
 router.use('/admin/masters', require('./adminMaster.routes'));
+router.use('/admin/client-copy', require('./clientCopy.routes'));
 router.use('/chief-admin-users', require('./chiefAdminUser.routes'));
 router.use('/patients', require('./patient.routes'));
 router.use('/doctors', require('./doctor.routes'));
