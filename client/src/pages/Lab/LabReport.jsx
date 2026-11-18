@@ -128,36 +128,48 @@ function SignatureBlock({ doctor }) {
  * on a new page, with its name above its tests and its own signature after them.
  * When the AI trend is included, each test's trend rows print right under
  * that test - so they stay inside its service group, before the signature.
+ *
+ * layout 'test' (test-wise): every test starts on its own page instead, under
+ * its service group's name, with its own signature (whoever released it).
  */
-function buildUnits({ groups, trend, includeTrend }) {
+function buildUnits({ groups, trend, includeTrend, layout = 'department' }) {
   const units = [];
   const trendRows = includeTrend && trend ? trend.parameters : [];
   const trendByBarcode = new Map();
   for (const p of trendRows) trendByBarcode.set(p.barcode, [...(trendByBarcode.get(p.barcode) || []), p]);
   const placed = new Set();
 
+  // One section = a group's name, its tests, then a signature. Department-wise
+  // a section is a whole service group; test-wise it is one test.
+  const sections = layout === 'test'
+    ? groups.flatMap((g, gi) => g.tests.map((t, ti) => ({
+      id: `g${gi}-t${ti}`, name: g.name, tests: [t], doctor: t.doctor || g.doctor,
+    })))
+    : groups.map((g, gi) => ({ id: `g${gi}`, name: g.name, tests: g.tests, doctor: g.doctor }));
+
   let testIdx = 0;
-  groups.forEach((g, gi) => {
+  sections.forEach((sec, si) => {
     const start = units.length;
+    const headKey = `${sec.id}-head`;
     // The service group's name heads its tests.
     units.push({
-      key: `g${gi}-head`, kind: 'block', testIdx: null, keepWithNext: true, pageBreakBefore: gi > 0, groupHead: true,
+      key: headKey, kind: 'block', testIdx: null, keepWithNext: true, pageBreakBefore: si > 0, groupHead: true,
       node: (
-        <div className={`report-group-head${gi > 0 ? ' report-group-break' : ''}`}>
-          {g.name && <div className="report-group-title">{g.name}</div>}
+        <div className={`report-group-head${si > 0 ? ' report-group-break' : ''}`}>
+          {sec.name && <div className="report-group-title">{sec.name}</div>}
         </div>
       ),
     });
-    g.tests.forEach((t) => {
+    sec.tests.forEach((t) => {
       const rows = (t.barcode && trendByBarcode.get(t.barcode)) || [];
       rows.forEach((r) => placed.add(r));
       addTestUnits(units, t, testIdx++, rows);
     });
-    if (g.doctor) {
-      units.push({ key: `g${gi}-sig`, kind: 'block', testIdx: null, keepWithPrevious: true, node: <SignatureBlock doctor={g.doctor} /> });
+    if (sec.doctor) {
+      units.push({ key: `${sec.id}-sig`, kind: 'block', testIdx: null, keepWithPrevious: true, node: <SignatureBlock doctor={sec.doctor} /> });
     }
-    // Tag the group's pieces, so a page its tests carry over onto repeats the group name at its top.
-    units.slice(start).forEach((u) => { u.groupIdx = gi; u.groupName = g.name || null; });
+    // Tag the section's pieces, so a page its tests carry over onto repeats the group name at its top.
+    units.slice(start).forEach((u) => { u.headKey = headKey; u.groupName = sec.name || null; });
   });
   addTrailingUnits(units, { unplacedTrend: trendRows.filter((r) => !placed.has(r)), hasTrend: trendRows.length > 0 });
   return units;
@@ -369,7 +381,7 @@ function paginate(units, h) {
       // The service group carries on from the previous page: repeat its name
       // at the top, as on the group's first page.
       if (u.groupName && !u.groupHead) {
-        const headKey = `g${u.groupIdx}-head`;
+        const { headKey } = u;
         page.units.push({
           key: `${headKey}-p${pages.length}`, kind: 'block', testIdx: null,
           node: <div className="report-group-head"><div className="report-group-title">{u.groupName}</div></div>,
@@ -420,6 +432,15 @@ export default function LabReport({ publicToken } = {}) {
   const [error, setError] = useState('');
   const [includeHeader, setIncludeHeader] = useState(true);
   const [includeTrend, setIncludeTrend] = useState(false); // trend prints only once this is ticked
+  // 'department': each service group continues page to page (default).
+  // 'test': every test on its own page with its own signature. Remembered on this device.
+  const [layout, setLayoutState] = useState(() => {
+    try { return localStorage.getItem('reportLayout') === 'test' ? 'test' : 'department'; } catch { return 'department'; }
+  });
+  const setLayout = (v) => {
+    setLayoutState(v);
+    try { localStorage.setItem('reportLayout', v); } catch { /* storage unavailable - just not remembered */ }
+  };
   const [heights, setHeights] = useState(null);
   const [qrImage, setQrImage] = useState('');
   const measureRef = useRef(null);
@@ -459,7 +480,8 @@ export default function LabReport({ publicToken } = {}) {
     groups: report.groups || [{ name: null, tests: report.tests, doctor: report.doctor }],
     trend,
     includeTrend,
-  }) : []), [report, trend, includeTrend]);
+    layout,
+  }) : []), [report, trend, includeTrend, layout]);
 
   // Measures every unit at the printed page's exact width (in a hidden copy)
   // so the print pages can be packed without anything spilling past a page.
@@ -534,6 +556,14 @@ export default function LabReport({ publicToken } = {}) {
           <input type="checkbox" style={{ width: 'auto' }} checked={includeHeader} onChange={(e) => setIncludeHeader(e.target.checked)} />
           Include letterhead/logo header
         </label>
+        <div role="radiogroup" aria-label="Report layout" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {[['department', 'Department-wise'], ['test', 'Test-wise']].map(([value, label]) => (
+            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, fontWeight: 'normal' }}>
+              <input type="radio" name="reportLayout" style={{ width: 'auto' }} value={value} checked={layout === value} onChange={() => setLayout(value)} />
+              {label}
+            </label>
+          ))}
+        </div>
         {/* Always offered; ticking it adds the trend for the parameters the
             lab ticked "Trend" for in Test Parameters. */}
         {!publicToken && (

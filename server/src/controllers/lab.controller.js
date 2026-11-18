@@ -400,6 +400,8 @@ async function buildBillReport(bill) {
     releasedAt: s.Report.releasedAt,
     remarks: s.remarks || null,
     remarksBig: s.remarksBig,
+    // Signature of whoever released this test - used when the report is printed test-wise (one test per page).
+    doctor: signatureFor([s]),
     parameters: sortResultsByParameter(s.Results.filter(hasValue)).map((r) => {
       const range = resolveNormalRange(r.ParameterMaster, age, gender, ageUnit);
       return {
