@@ -3,15 +3,33 @@ import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import { Icon } from '../../components/Icons';
 
-function StatCard({ icon, color, value, label }) {
-  return (
-    <div className="dash-stat-card">
+function StatCard({ icon, color, value, label, onClick, selected }) {
+  const inner = (
+    <>
       <div className={`dash-stat-icon ${color}`}><Icon name={icon} size={19} /></div>
       <div>
         <div className="dash-stat-value">{value}</div>
         <div className="dash-stat-label">{label}</div>
       </div>
-    </div>
+    </>
+  );
+  if (!onClick) return <div className="dash-stat-card">{inner}</div>;
+  // A clickable tile filters the client list below; the selected one is outlined.
+  return (
+    <button
+      type="button"
+      className="dash-stat-card"
+      onClick={onClick}
+      aria-pressed={selected}
+      title={selected ? 'Showing these clients - click to show all' : `Show ${label.toLowerCase()} clients below`}
+      style={{
+        cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit', width: '100%',
+        border: selected ? '2px solid #2563eb' : '2px solid transparent',
+        boxShadow: selected ? '0 0 0 3px rgba(37, 99, 235, 0.15)' : undefined,
+      }}
+    >
+      {inner}
+    </button>
   );
 }
 
@@ -25,9 +43,10 @@ export default function Dashboard() {
 
   async function load() {
     setLoading(true);
+    // Always every client: the status tiles keep their counts while the list
+    // below is filtered here by the selected tile / status dropdown.
     const { data } = await api.get('/clients', {
       params: {
-        status: statusFilter || undefined,
         from: fromDate || undefined,
         to: toDate || undefined,
       },
@@ -36,13 +55,15 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [statusFilter, fromDate, toDate]);
+  useEffect(() => { load(); }, [fromDate, toDate]);
+
+  // Clicking the selected tile again (or Total Clients) shows every client.
+  const pickStatus = (status) => setStatusFilter((cur) => (cur === status ? '' : status));
 
   const { summary, clients } = data;
   const q = search.trim().toLowerCase();
-  const filteredClients = q
-    ? clients.filter((c) => c.clientCode?.toLowerCase().includes(q) || c.clientName?.toLowerCase().includes(q))
-    : clients;
+  const filteredClients = clients.filter((c) => (!statusFilter || c.paymentStatus === statusFilter)
+    && (!q || c.clientCode?.toLowerCase().includes(q) || c.clientName?.toLowerCase().includes(q)));
   const dateFiltered = Boolean(fromDate || toDate);
 
   return (
@@ -76,10 +97,10 @@ export default function Dashboard() {
 
       <p className="dash-section-label">Client Status</p>
       <div className="dash-stat-grid">
-        <StatCard icon="building" color="blue" value={summary.total || 0} label="Total Clients" />
-        <StatCard icon="team" color="green" value={summary.paid || 0} label="Paid" />
-        <StatCard icon="clock" color="amber" value={summary.pending || 0} label="Pending" />
-        <StatCard icon="close" color="red" value={summary.expired || 0} label="Expired" />
+        <StatCard icon="building" color="blue" value={summary.total || 0} label="Total Clients" onClick={() => setStatusFilter('')} selected={!statusFilter} />
+        <StatCard icon="team" color="green" value={summary.paid || 0} label="Paid" onClick={() => pickStatus('PAID')} selected={statusFilter === 'PAID'} />
+        <StatCard icon="clock" color="amber" value={summary.pending || 0} label="Pending" onClick={() => pickStatus('PENDING')} selected={statusFilter === 'PENDING'} />
+        <StatCard icon="close" color="red" value={summary.expired || 0} label="Expired" onClick={() => pickStatus('EXPIRED')} selected={statusFilter === 'EXPIRED'} />
       </div>
 
       <p className="dash-section-label">Revenue</p>
@@ -119,7 +140,7 @@ export default function Dashboard() {
             <thead>
               <tr>
                 <th>Client Code</th><th>Name</th><th>Mobile</th><th>Sales Person</th>
-                <th>Monthly Amount</th><th>Users</th><th>Status</th><th>Paid Through</th>
+                <th>Monthly Amount</th><th>Users</th><th>Status</th><th>Active</th><th>Paid Through</th>
                 <th>Payments{dateFiltered ? ' (range)' : ''}</th>
                 <th>Lab Bills</th><th>Lab Revenue</th><th></th>
               </tr>
@@ -134,6 +155,11 @@ export default function Dashboard() {
                   <td>₹{c.monthlyAmount}</td>
                   <td>{c.userCount}</td>
                   <td><span className={`badge ${c.paymentStatus}`}>{c.paymentStatus}</span></td>
+                  <td>
+                    {c.active === false
+                      ? <span className="badge" style={{ background: '#f1f5f9', color: '#64748b' }}>INACTIVE</span>
+                      : <span className="badge" style={{ background: '#dcfce7', color: '#166534' }}>ACTIVE</span>}
+                  </td>
                   <td>{c.paidThrough ? new Date(c.paidThrough).toLocaleDateString() : '—'}</td>
                   <td>₹{c.paymentsCollected}</td>
                   <td>{c.labBillCount}</td>
@@ -145,7 +171,7 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ))}
-              {filteredClients.length === 0 && <tr><td colSpan={12}>No clients found.</td></tr>}
+              {filteredClients.length === 0 && <tr><td colSpan={13}>No clients found.</td></tr>}
             </tbody>
           </table>
         )}
