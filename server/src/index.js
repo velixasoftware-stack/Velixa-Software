@@ -146,6 +146,18 @@ async function start() {
     // Bills from before a client had locations belong to its Main location.
     'UPDATE bill b SET "locationId" = l.id FROM client_location l WHERE l."clientId" = b."clientId" AND l."isMain" AND b."locationId" IS NULL',
     'UPDATE sample s SET "locationId" = l.id FROM client_location l WHERE l."clientId" = s."clientId" AND l."isMain" AND s."locationId" IS NULL',
+    // Indexes on the columns every lab/billing/report lookup filters or joins
+    // by - Postgres doesn't create them for foreign keys, so without them each
+    // lookup reads the whole table, which gets slower as bills and results grow.
+    'CREATE INDEX IF NOT EXISTS result_sample_id ON result ("sampleId")',
+    'CREATE INDEX IF NOT EXISTS sample_client_id ON sample ("clientId")',
+    'CREATE INDEX IF NOT EXISTS sample_bill_item_id ON sample ("billItemId")',
+    'CREATE INDEX IF NOT EXISTS bill_item_bill_id ON bill_item ("billId")',
+    'CREATE INDEX IF NOT EXISTS bill_client_created ON bill ("clientId", "createdAt")',
+    'CREATE INDEX IF NOT EXISTS report_sample_id ON report ("sampleId")',
+    'CREATE INDEX IF NOT EXISTS parameter_master_test_id ON parameter_master ("testId")',
+    'CREATE INDEX IF NOT EXISTS parameter_normal_range_parameter_id ON parameter_normal_range ("parameterId")',
+    'CREATE INDEX IF NOT EXISTS patient_client_id ON patient ("clientId")',
   ].join(';\n'));
   // Every Chief Admin role (e.g. MARKETING_LEAD, added later) must exist as a Role row to be assignable.
   for (const name of ALL_CHIEF_ADMIN_ROLES) await Role.findOrCreate({ where: { name } }); // eslint-disable-line no-await-in-loop

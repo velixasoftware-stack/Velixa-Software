@@ -242,7 +242,9 @@ async function listTests(req, res) {
   const tests = await TestMaster.findAll({
     include: [
       // Ranges are attached below per clinic (applyClientRanges), not included here.
-      { model: ParameterMaster, where: paramWhere, required: false },
+      // separate: own parameters in their own query - joined with the assigned
+      // parameters below, every test row multiplied out (5s+ for ~800 tests).
+      { model: ParameterMaster, where: paramWhere, required: false, separate: true },
       { model: ParameterMaster, as: 'AssignedParameters', where: paramWhere, required: false, through: { attributes: [] } },
     ],
     order: [['testCode', 'ASC']],

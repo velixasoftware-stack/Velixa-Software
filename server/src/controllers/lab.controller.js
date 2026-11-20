@@ -20,6 +20,10 @@ const { hiddenKey, hiddenParameterKeys } = require('../utils/hiddenParameters');
 // TestMaster.AssignedParameters in models/index.js) - merged into
 // ParameterMasters by withResolvedRanges below, so result entry shows them
 // exactly like the test's own parameters.
+// separate: true loads a test's own parameters and a sample's results in their
+// own queries instead of joining them all into one: joined, every sample came
+// back once per (parameter x assigned parameter x result) combination - 11
+// samples took ~9s; separate, ~0.25s with identical data.
 function buildSampleIncludes(clientId) {
   const paramWhere = { active: true, [Op.or]: [{ clientId: null }, { clientId }] };
   return [
@@ -29,7 +33,7 @@ function buildSampleIncludes(clientId) {
         {
           model: TestMaster,
           include: [
-            { model: ParameterMaster, where: paramWhere, required: false },
+            { model: ParameterMaster, where: paramWhere, required: false, separate: true },
             { model: ParameterMaster, as: 'AssignedParameters', where: paramWhere, required: false, through: { attributes: [] } },
           ],
         },
@@ -37,7 +41,7 @@ function buildSampleIncludes(clientId) {
       ],
     },
     Report,
-    { model: Result, include: [ParameterMaster] },
+    { model: Result, include: [ParameterMaster], separate: true },
   ];
 }
 
@@ -63,29 +67,35 @@ async function attachNormalRanges(parameterMasters, clientId) {
  */
 // hidden: this client's removed universal parameters (hiddenParameterKeys) -
 // pass it in when resolving many samples so it's fetched only once.
-async function withResolvedRanges(sampleJson, hidden) {
+// Merges a sample's test parameters (own + assigned, minus ones this clinic
+// removed) into BillItem.TestMaster.ParameterMasters. No database access.
+function mergeSampleParameters(sampleJson, hiddenKeys) {
+  const testMaster = sampleJson.BillItem?.TestMaster;
+  if (!testMaster) return;
+  const owned = testMaster.ParameterMasters || [];
+  const ownedIds = new Set(owned.map((p) => p.id));
+  const assigned = (testMaster.AssignedParameters || []).filter((p) => !ownedIds.has(p.id));
+  // A parameter this clinic removed from the test is left out - unless this
+  // sample already has a result for it, so nothing entered disappears.
+  const withResult = new Set((sampleJson.Results || []).map((r) => r.parameterId));
+  testMaster.ParameterMasters = sortParameters([...owned, ...assigned])
+    .filter((p) => withResult.has(p.id) || !hiddenKeys.has(hiddenKey(testMaster.id, p.id)));
+  delete testMaster.AssignedParameters;
+}
+
+// rangesAttached: the caller already ran attachNormalRanges over these
+// samples' parameters in one go (listSamples) - skip the per-sample lookup.
+async function withResolvedRanges(sampleJson, hidden, { rangesAttached = false } = {}) {
   const patient = sampleJson.BillItem?.Bill?.Patient;
   const age = patient?.age;
   const gender = patient?.gender;
   const ageUnit = patient?.ageUnit;
 
-  const testMaster = sampleJson.BillItem?.TestMaster;
-  if (testMaster) {
-    const owned = testMaster.ParameterMasters || [];
-    const ownedIds = new Set(owned.map((p) => p.id));
-    const assigned = (testMaster.AssignedParameters || []).filter((p) => !ownedIds.has(p.id));
-    // A parameter this clinic removed from the test is left out - unless this
-    // sample already has a result for it, so nothing entered disappears.
-    const hiddenKeys = hidden || await hiddenParameterKeys(sampleJson.clientId);
-    const withResult = new Set((sampleJson.Results || []).map((r) => r.parameterId));
-    testMaster.ParameterMasters = sortParameters([...owned, ...assigned])
-      .filter((p) => withResult.has(p.id) || !hiddenKeys.has(hiddenKey(testMaster.id, p.id)));
-    delete testMaster.AssignedParameters;
-  }
+  if (!rangesAttached) mergeSampleParameters(sampleJson, hidden || await hiddenParameterKeys(sampleJson.clientId));
 
   const params = sampleJson.BillItem?.TestMaster?.ParameterMasters;
   if (Array.isArray(params) && params.length > 0) {
-    await attachNormalRanges(params, sampleJson.clientId);
+    if (!rangesAttached) await attachNormalRanges(params, sampleJson.clientId);
     for (const p of params) {
       const resolved = resolveNormalRange(p, age, gender, ageUnit);
       p.normalRangeLow = resolved.normalRangeLow;
@@ -106,7 +116,13 @@ async function listSamples(req, res) {
 
   const samples = await Sample.findAll({ where, include: buildSampleIncludes(clientId), order: [['createdAt', 'DESC']] });
   const hidden = await hiddenParameterKeys(clientId);
-  const withRanges = await Promise.all(samples.map((s) => withResolvedRanges(s.toJSON(), hidden)));
+  // Every sample's parameters get their ranges from ONE lookup (a few queries
+  // in total), not one lookup per sample - each lookup is a round trip to the
+  // database, and a busy lab screen lists hundreds of samples.
+  const jsons = samples.map((s) => s.toJSON());
+  jsons.forEach((j) => mergeSampleParameters(j, hidden));
+  await attachNormalRanges(jsons.flatMap((j) => j.BillItem?.TestMaster?.ParameterMasters || []), clientId);
+  const withRanges = await Promise.all(jsons.map((j) => withResolvedRanges(j, hidden, { rangesAttached: true })));
   // canRevoke: released and still inside the revoke window - the lab screen
   // offers Revoke only for these (the server re-checks on revoke anyway).
   for (const s of withRanges) s.canRevoke = !revokeBlockReason(s);
@@ -201,29 +217,44 @@ async function enterResults(req, res) {
 
   const patient = sample.BillItem?.Bill?.Patient;
 
-  for (const r of results) {
-    const parameter = await ParameterMaster.findByPk(r.parameterId);
-    if (!parameter) continue;
-    await attachNormalRanges([parameter], clientId); // this clinic's ranges decide the abnormal flag
-    const range = resolveNormalRange(parameter, patient?.age, patient?.gender, patient?.ageUnit);
-    const isAbnormal = isOutOfRange(r.value, range.normalRangeLow, range.normalRangeHigh);
+  // All parameters, their ranges and the existing results in a handful of
+  // queries - not ~10 per parameter (a 20-parameter test was ~200 sequential
+  // round trips to the database, minutes on a slow link) - then everything
+  // written in one transaction.
+  const ids = [...new Set(results.map((r) => Number(r.parameterId)).filter(Boolean))];
+  const parameters = ids.length ? await ParameterMaster.findAll({ where: { id: ids } }) : [];
+  await attachNormalRanges(parameters, clientId); // this clinic's ranges decide the abnormal flag
+  const paramById = new Map(parameters.map((p) => [p.id, p]));
+  const existing = ids.length ? await Result.findAll({ where: { sampleId: sample.id, parameterId: ids } }) : [];
+  const existingByParam = new Map(existing.map((r) => [r.parameterId, r]));
 
-    const [record] = await Result.findOrCreate({
-      where: { sampleId: sample.id, parameterId: r.parameterId },
-      defaults: { value: r.value, isAbnormal },
-    });
-    if (record.value !== r.value) await record.update({ value: r.value, isAbnormal });
-  }
+  await sequelize.transaction(async (transaction) => {
+    const toCreate = [];
+    for (const r of results) {
+      const parameter = paramById.get(Number(r.parameterId));
+      if (!parameter) continue;
+      const range = resolveNormalRange(parameter, patient?.age, patient?.gender, patient?.ageUnit);
+      const isAbnormal = isOutOfRange(r.value, range.normalRangeLow, range.normalRangeHigh);
+      const record = existingByParam.get(parameter.id);
+      if (!record) {
+        toCreate.push({ sampleId: sample.id, parameterId: parameter.id, value: r.value, isAbnormal });
+        existingByParam.set(parameter.id, { value: r.value }); // a repeated parameterId in one request isn't created twice
+      } else if (record.update && record.value !== r.value) {
+        await record.update({ value: r.value, isAbnormal }, { transaction }); // eslint-disable-line no-await-in-loop
+      }
+    }
+    if (toCreate.length) await Result.bulkCreate(toCreate, { transaction });
 
-  const update = { status: 'RESULT_ENTERED', resultEnteredAt: new Date(), resultEnteredBy: getCurrentActor() };
-  if (remarks !== undefined) {
-    update.remarks = remarks?.toString().trim() || null;
-    update.remarksBig = !!remarksBig;
-  }
-  await sample.update(update);
-  if (sample.Report.status !== 'PENDING') {
-    await sample.Report.update({ status: 'PENDING', verifiedAt: null });
-  }
+    const update = { status: 'RESULT_ENTERED', resultEnteredAt: new Date(), resultEnteredBy: getCurrentActor() };
+    if (remarks !== undefined) {
+      update.remarks = remarks?.toString().trim() || null;
+      update.remarksBig = !!remarksBig;
+    }
+    await sample.update(update, { transaction });
+    if (sample.Report.status !== 'PENDING') {
+      await sample.Report.update({ status: 'PENDING', verifiedAt: null }, { transaction });
+    }
+  });
   return res.json({ message: 'Results saved' });
 }
 
