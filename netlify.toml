@@ -12,13 +12,13 @@
 # needed. Must come before the SPA catch-all below.
 [[redirects]]
   from = "/api/*"
-  to = "https://hms-lims.onrender.com/api/:splat"
+  to = "https://velixa-lims-sg.onrender.com/api/:splat"
   status = 200
   force = true
 
 [[redirects]]
   from = "/uploads/*"
-  to = "https://hms-lims.onrender.com/uploads/:splat"
+  to = "https://velixa-lims-sg.onrender.com/uploads/:splat"
   status = 200
   force = true
 
