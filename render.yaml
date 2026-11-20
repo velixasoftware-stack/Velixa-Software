@@ -27,3 +27,48 @@ services:
         value: ""
       - key: RAZORPAY_WEBHOOK_SECRET
         value: ""
+
+  # The same app in Singapore - next to the Supabase database in Mumbai
+  # (ap-south-1), so each database query is ~10x quicker than from Oregon
+  # (hms-lims above, Render's default region). Its secrets are copied from
+  # hms-lims, so logins and the database stay exactly the same. Once the site
+  # (Netlify, netlify.toml) points here and it's confirmed working, hms-lims
+  # is deleted - the free plan only has hours for one always-on service.
+  - type: web
+    name: velixa-lims-sg
+    runtime: node
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    buildCommand: npm install --include=dev --prefix client && npm run build --prefix client && npm install --prefix server
+    startCommand: npm start --prefix server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: hms-lims
+          envVarKey: DATABASE_URL
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        fromService:
+          type: web
+          name: hms-lims
+          envVarKey: JWT_SECRET
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: CHIEF_ADMIN_USERNAME
+        value: chiefadmin
+      - key: CHIEF_ADMIN_PASSWORD
+        fromService:
+          type: web
+          name: hms-lims
+          envVarKey: CHIEF_ADMIN_PASSWORD
+      - key: RAZORPAY_KEY_ID
+        value: ""
+      - key: RAZORPAY_KEY_SECRET
+        value: ""
+      - key: RAZORPAY_WEBHOOK_SECRET
+        value: ""
