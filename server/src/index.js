@@ -28,7 +28,9 @@ app.use(helmet({
   // letterheads, signatures) cross-origin - the default policy would block that.
   crossOriginResourcePolicy: false,
 }));
-app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
+// The site (lims.thevelixa.in on Netlify) calls this API directly - maxAge lets
+// the browser reuse its CORS check for 2 hours instead of asking before most requests.
+app.use(cors({ origin: process.env.CLIENT_URL || '*', maxAge: 7200 }));
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
 }));
