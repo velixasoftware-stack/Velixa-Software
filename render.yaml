@@ -1,39 +1,9 @@
 services:
-  - type: web
-    name: hms-lims
-    runtime: node
-    plan: free
-    # --include=dev: NODE_ENV=production would otherwise skip vite (a devDependency) and fail the client build.
-    buildCommand: npm install --include=dev --prefix client && npm run build --prefix client && npm install --prefix server
-    startCommand: npm start --prefix server
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false
-      - key: DB_SSL
-        value: "true"
-      - key: JWT_SECRET
-        generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 8h
-      - key: CHIEF_ADMIN_USERNAME
-        value: chiefadmin
-      - key: CHIEF_ADMIN_PASSWORD
-        sync: false
-      - key: RAZORPAY_KEY_ID
-        value: ""
-      - key: RAZORPAY_KEY_SECRET
-        value: ""
-      - key: RAZORPAY_WEBHOOK_SECRET
-        value: ""
-
-  # The same app in Singapore - next to the Supabase database in Mumbai
-  # (ap-south-1), so each database query is ~10x quicker than from Oregon
-  # (hms-lims above, Render's default region). Its secrets are copied from
-  # hms-lims, so logins and the database stay exactly the same. Once the site
-  # (Netlify, netlify.toml) points here and it's confirmed working, hms-lims
-  # is deleted - the free plan only has hours for one always-on service.
+  # Runs in Singapore, next to the Supabase database in Mumbai (ap-south-1) -
+  # ~3x quicker per database query than the old Oregon service (hms-lims, now
+  # removed). The site (Netlify) calls it directly - see client/.env.production.
+  # Secrets are entered in the Render dashboard (sync: false): Render keeps the
+  # values already set and never overwrites them from this file.
   - type: web
     name: velixa-lims-sg
     runtime: node
@@ -46,26 +16,17 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromService:
-          type: web
-          name: hms-lims
-          envVarKey: DATABASE_URL
+        sync: false
       - key: DB_SSL
         value: "true"
       - key: JWT_SECRET
-        fromService:
-          type: web
-          name: hms-lims
-          envVarKey: JWT_SECRET
+        sync: false
       - key: JWT_EXPIRES_IN
         value: 8h
       - key: CHIEF_ADMIN_USERNAME
         value: chiefadmin
       - key: CHIEF_ADMIN_PASSWORD
-        fromService:
-          type: web
-          name: hms-lims
-          envVarKey: CHIEF_ADMIN_PASSWORD
+        sync: false
       - key: RAZORPAY_KEY_ID
         value: ""
       - key: RAZORPAY_KEY_SECRET
