@@ -1776,3 +1776,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #60a5fa
 
 /* Lab report: the parameter's testing method, in its own column. */
 .report-param-table td.report-param-method { font-size: 11.5px; color: #475569; }
+
+/* Doctor Commission: printing an open statement prints just the statement. */
+@media print {
+  body:has(.commission-statement) .main-content > div > :not(.card:has(.commission-statement)) { display: none !important; }
+  body:has(.commission-statement) .card:has(.commission-statement) > :not(.modal-backdrop) { display: none !important; }
+  body:has(.commission-statement) .modal-backdrop { position: static !important; background: none !important; padding: 0 !important; }
+  body:has(.commission-statement) .commission-statement { box-shadow: none !important; margin: 0 !important; max-width: none !important; }
+}

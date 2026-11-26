@@ -17,6 +17,7 @@ export const SCREEN_CATALOG = [
   { key: 'reports', to: '/app/reports', label: 'Reports', icon: 'reports', group: 'Manager' },
   { key: 'report-branding', to: '/app/report-branding', label: 'Report Branding', icon: 'branding', group: 'Manager' },
   { key: 'payor-invoices', to: '/app/payor-invoices', label: 'Payor Invoices', icon: 'invoice', group: 'Manager' },
+  { key: 'doctor-commission', to: '/app/doctor-commission', label: 'Doctor Commission', icon: 'percent', group: 'Manager' },
   { key: 'test-parameters', to: '/app/test-parameters', label: 'Test Parameters', icon: 'masters', group: 'Manager' },
   { key: 'masters', to: '/app/masters', label: 'Masters & Pricing', icon: 'masters', group: 'Admin' },
   { key: 'payors', to: '/app/payors', label: 'Payors', icon: 'building', group: 'Admin' },
@@ -97,7 +98,7 @@ function SidebarBrand({ title, subtitle }) {
 export const DEFAULT_ROLE_SCREENS = {
   FRONT_OFFICE: ['billing', 'orders', 'pending-tests'],
   LAB_USER: ['lab', 'pending-tests'],
-  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders', 'pending-tests'],
+  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders', 'pending-tests', 'doctor-commission'],
   MASTER_MANAGER: ['masters', 'payors'],
 };
 

@@ -612,6 +612,64 @@ const ReferralDoctor = sequelize.define('ReferralDoctor', {
   indexes: [{ unique: true, fields: ['clientId', 'name'] }],
 });
 
+// ===== REFERRAL DOCTOR COMMISSION ===========================================
+// A clinic's commission for a referral doctor: testId null = the doctor's
+// default for every test, set = that test's own rate (overrides the default).
+// rateType PERCENT (of the test's price after the bill's discount) or FIXED (₹
+// per test). The patient never sees it - billing is unchanged. Plain id
+// columns (no foreign keys) so a Client Data Reset of doctors/bills is never
+// blocked by commission history.
+const DoctorCommissionRate = sequelize.define('DoctorCommissionRate', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  clientId: { type: DataTypes.INTEGER, allowNull: false },
+  doctorId: { type: DataTypes.INTEGER, allowNull: false },
+  testId: { type: DataTypes.INTEGER },
+  rateType: { type: DataTypes.STRING, allowNull: false, defaultValue: 'PERCENT' }, // PERCENT | FIXED
+  rate: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+  ...AUDIT_FIELDS,
+}, { tableName: 'doctor_commission_rate', indexes: [{ fields: ['clientId', 'doctorId'] }] });
+
+// One doctor's commission for one period (a week or a month): GENERATED, then
+// PAID once handed over. Its lines are the billed tests it covers.
+const CommissionStatement = sequelize.define('CommissionStatement', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  clientId: { type: DataTypes.INTEGER, allowNull: false },
+  doctorId: { type: DataTypes.INTEGER, allowNull: false },
+  doctorName: { type: DataTypes.STRING, allowNull: false }, // kept as it was when generated
+  statementNo: { type: DataTypes.STRING, allowNull: false },
+  periodType: { type: DataTypes.STRING, allowNull: false }, // WEEK | MONTH
+  fromDate: { type: DataTypes.DATEONLY, allowNull: false },
+  toDate: { type: DataTypes.DATEONLY, allowNull: false },
+  billCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  testCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  totalAmount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 }, // tests' value after discount
+  totalCommission: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'GENERATED' }, // GENERATED | PAID
+  paidAt: { type: DataTypes.DATEONLY },
+  paymentMode: { type: DataTypes.STRING },
+  paymentReference: { type: DataTypes.STRING },
+  notes: { type: DataTypes.STRING },
+  ...AUDIT_FIELDS,
+}, { tableName: 'commission_statement', indexes: [{ fields: ['clientId', 'fromDate'] }] });
+
+// billItemId is unique: a billed test is paid commission in one statement only.
+const CommissionStatementLine = sequelize.define('CommissionStatementLine', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  billItemId: { type: DataTypes.INTEGER, allowNull: false, unique: true },
+  billId: { type: DataTypes.INTEGER, allowNull: false },
+  billNo: { type: DataTypes.STRING },
+  billDate: { type: DataTypes.DATE },
+  patientName: { type: DataTypes.STRING },
+  testCode: { type: DataTypes.STRING },
+  testName: { type: DataTypes.STRING },
+  price: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 }, // the test's billed price
+  netAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 }, // after its share of the bill discount
+  rateType: { type: DataTypes.STRING },
+  rate: { type: DataTypes.DECIMAL(10, 2) },
+  commission: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+  ...AUDIT_FIELDS,
+}, { tableName: 'commission_statement_line' });
+
 const Bill = sequelize.define('Bill', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   billNo: { type: DataTypes.STRING, allowNull: false },
@@ -972,6 +1030,9 @@ Report.belongsTo(ClientUser, { foreignKey: 'releasedByUserId', as: 'ReleasedByUs
 Client.hasMany(Ticket, { foreignKey: 'clientId', onDelete: 'CASCADE' });
 Ticket.belongsTo(Client, { foreignKey: 'clientId' });
 
+CommissionStatement.hasMany(CommissionStatementLine, { foreignKey: { name: 'statementId', allowNull: false }, onDelete: 'CASCADE' });
+CommissionStatementLine.belongsTo(CommissionStatement, { foreignKey: 'statementId' });
+
 // ===== AUDIT HOOKS ===========================================================
 // Applied globally so createdBy/updatedBy are stamped on every model above
 // without every controller having to remember to set them.
@@ -1049,6 +1110,9 @@ module.exports = {
   Package,
   Patient,
   ReferralDoctor,
+  DoctorCommissionRate,
+  CommissionStatement,
+  CommissionStatementLine,
   Payor,
   PayorTestPrice,
   PayorInvoice,

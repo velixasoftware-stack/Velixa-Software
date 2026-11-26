@@ -43,7 +43,7 @@ const BUILTIN_SALES_ROLE_SCREENS = {
 // Every screen a client-side role can be granted access to, and which of the
 // client-side roles have their screen access configurable at all (ADMIN
 // always sees everything, by design - it's the role doing the configuring).
-const ALL_SCREEN_KEYS = ['masters', 'payors', 'tickets', 'billing', 'orders', 'lab', 'reports', 'report-branding', 'payor-invoices', 'test-parameters', 'pending-tests'];
+const ALL_SCREEN_KEYS = ['masters', 'payors', 'tickets', 'billing', 'orders', 'lab', 'reports', 'report-branding', 'payor-invoices', 'test-parameters', 'pending-tests', 'doctor-commission'];
 const CONFIGURABLE_ROLES = [ROLES.FRONT_OFFICE, ROLES.LAB_USER, ROLES.MANAGER, ROLES.MASTER_MANAGER];
 
 // Built-in fallback used the moment a role has no RoleScreenDefault row yet
@@ -52,7 +52,7 @@ const CONFIGURABLE_ROLES = [ROLES.FRONT_OFFICE, ROLES.LAB_USER, ROLES.MANAGER, R
 const BUILTIN_ROLE_SCREEN_DEFAULTS = {
   FRONT_OFFICE: ['billing', 'orders', 'pending-tests'],
   LAB_USER: ['lab', 'pending-tests'],
-  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders', 'pending-tests'],
+  MANAGER: ['reports', 'tickets', 'report-branding', 'payor-invoices', 'test-parameters', 'orders', 'pending-tests', 'doctor-commission'],
   MASTER_MANAGER: ['masters', 'payors'],
 };
 

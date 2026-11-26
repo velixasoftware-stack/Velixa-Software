@@ -38,6 +38,7 @@ import LabReport from './pages/Lab/LabReport';
 import Reports from './pages/Manager/Reports';
 import ReportBranding from './pages/Manager/ReportBranding';
 import PayorInvoices from './pages/Manager/PayorInvoices';
+import DoctorCommission from './pages/Manager/DoctorCommission';
 import PayorInvoiceView from './pages/Manager/PayorInvoiceView';
 import TestParameters from './pages/Manager/TestParameters';
 
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="reports" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><Reports /></ProtectedRoute>} />
         <Route path="report-branding" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><ReportBranding /></ProtectedRoute>} />
         <Route path="payor-invoices" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><PayorInvoices /></ProtectedRoute>} />
+        <Route path="doctor-commission" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><DoctorCommission /></ProtectedRoute>} />
         <Route path="payor-invoices/:invoiceId" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER']}><PayorInvoiceView /></ProtectedRoute>} />
         <Route path="test-parameters" element={<ProtectedRoute type="CLIENT_USER" roles={['MANAGER', 'MASTER_MANAGER']}><TestParameters /></ProtectedRoute>} />
         <Route path="role-screens" element={<ProtectedRoute type="CLIENT_USER" roles={['ADMIN']}><RoleScreens /></ProtectedRoute>} />
