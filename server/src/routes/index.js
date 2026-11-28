@@ -11,6 +11,7 @@ router.use('/admin/client-copy', require('./clientCopy.routes'));
 router.use('/admin/removed-parameters', require('./removedParameters.routes'));
 router.use('/chief-admin-role-screens', require('./chiefAdminRoleScreen.routes'));
 router.use('/doctor-commission', require('./doctorCommission.routes'));
+router.use('/admin/client-notifications', require('./clientNotification.routes'));
 router.use('/chief-admin-users', require('./chiefAdminUser.routes'));
 router.use('/patients', require('./patient.routes'));
 router.use('/doctors', require('./doctor.routes'));

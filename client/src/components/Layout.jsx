@@ -144,6 +144,7 @@ export function ChiefAdminLayout() {
               <NavLink to="/chief-admin/team-passwords"><Icon name="lock" size={17} /><span>Reset Passwords</span></NavLink>
               <NavLink to="/chief-admin/tickets"><Icon name="tickets" size={17} /><span>Tickets</span></NavLink>
               <NavLink to="/chief-admin/integrations"><Icon name="plug" size={17} /><span>Integrations</span></NavLink>
+              <NavLink to="/chief-admin/client-messaging"><Icon name="plug" size={17} /><span>Client Messaging</span></NavLink>
               <NavLink to="/chief-admin/sales-dashboard"><Icon name="reports" size={17} /><span>Sales Dashboard</span></NavLink>
               <NavLink to="/chief-admin/role-screen-defaults"><Icon name="branding" size={17} /><span>Role Screen Defaults</span></NavLink>
               <NavLink to="/chief-admin/sales-role-screens"><Icon name="branding" size={17} /><span>Sales Role Screens</span></NavLink>

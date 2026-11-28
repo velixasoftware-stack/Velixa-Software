@@ -8,6 +8,7 @@ const { locationWhere, sessionLocationId, applyLocationPrices } = require('../ut
 const { findOrCreatePatient } = require('./patient.controller');
 const { findOrCreateDoctor } = require('./referralDoctor.controller');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
+const { queueBillEvent } = require('../utils/clientNotify');
 const { fastingPostLunchConflict } = require('../utils/testType');
 const { isBillableForClient } = require('../utils/testStatus');
 const { itemCharges, cancellationSplit, withCharges, round2 } = require('../utils/billCharges');
@@ -300,6 +301,9 @@ async function createBill(req, res) {
       return bill;
     });
 
+    // Automatic "bill generated" WhatsApp/SMS/email, if this client has them
+    // switched on - sent after this response, so billing never waits for it.
+    queueBillEvent('BILL_CREATED', result.id);
     return res.status(201).json(result);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Failed to create bill' });

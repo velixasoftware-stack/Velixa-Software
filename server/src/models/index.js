@@ -612,6 +612,40 @@ const ReferralDoctor = sequelize.define('ReferralDoctor', {
   indexes: [{ unique: true, fields: ['clientId', 'name'] }],
 });
 
+// ===== CLIENT MESSAGING (WhatsApp / SMS / Gmail) ============================
+// One row per client, set by Chief Admin: the client's own accounts for each
+// channel and which automatic messages go out (bill generated, report
+// released). JSON columns keep each channel's settings together:
+//   whatsapp: { enabled, phoneNumberId, accessToken, language, templateBill, templateReport }
+//   sms:      { enabled, method, url, body, contentType, headers, senderId, dltTemplateBill, dltTemplateReport }
+//   email:    { enabled, gmailAddress, appPassword, fromName }
+//   events:   { BILL_CREATED: { whatsapp, sms, email, text }, REPORT_RELEASED: { ... } }
+// usePlatformFallback: a channel switched on but without the client's own
+// account sends through the platform account (Chief Admin > Integrations).
+const ClientNotificationConfig = sequelize.define('ClientNotificationConfig', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  clientId: { type: DataTypes.INTEGER, allowNull: false, unique: true },
+  whatsapp: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  sms: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  email: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  events: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+  usePlatformFallback: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  ...AUDIT_FIELDS,
+}, { tableName: 'client_notification_config' });
+
+// Every automatic/test message attempt - shown to Chief Admin per client.
+const NotificationLog = sequelize.define('NotificationLog', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  clientId: { type: DataTypes.INTEGER, allowNull: false },
+  billId: { type: DataTypes.INTEGER },
+  event: { type: DataTypes.STRING, allowNull: false }, // BILL_CREATED | REPORT_RELEASED | TEST
+  channel: { type: DataTypes.STRING, allowNull: false }, // WHATSAPP | SMS | EMAIL
+  recipient: { type: DataTypes.STRING },
+  status: { type: DataTypes.STRING, allowNull: false }, // SENT | FAILED | SKIPPED
+  detail: { type: DataTypes.TEXT },
+  ...AUDIT_FIELDS,
+}, { tableName: 'notification_log', indexes: [{ fields: ['clientId', 'createdAt'] }] });
+
 // ===== REFERRAL DOCTOR COMMISSION ===========================================
 // A clinic's commission for a referral doctor: testId null = the doctor's
 // default for every test, set = that test's own rate (overrides the default).
@@ -1113,6 +1147,8 @@ module.exports = {
   DoctorCommissionRate,
   CommissionStatement,
   CommissionStatementLine,
+  ClientNotificationConfig,
+  NotificationLog,
   Payor,
   PayorTestPrice,
   PayorInvoice,

@@ -15,6 +15,7 @@ import TestRemoval from './pages/ChiefAdmin/TestRemoval';
 import ClientSetupCopy from './pages/ChiefAdmin/ClientSetupCopy';
 import RemovedParameters from './pages/ChiefAdmin/RemovedParameters';
 import SalesRoleScreens from './pages/ChiefAdmin/SalesRoleScreens';
+import ClientMessaging from './pages/ChiefAdmin/ClientMessaging';
 import ClientDataReset from './pages/ChiefAdmin/ClientDataReset';
 import PublicReport from './pages/PublicReport';
 import ChiefAdminTickets from './pages/ChiefAdmin/Tickets';
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="data-reset" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ClientDataReset /></ProtectedRoute>} />
         <Route path="users" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ChiefAdminUsers /></ProtectedRoute>} />
         <Route path="sales-role-screens" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><SalesRoleScreens /></ProtectedRoute>} />
+        <Route path="client-messaging" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN']}><ClientMessaging /></ProtectedRoute>} />
         <Route path="tickets" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><ChiefAdminTickets /></ProtectedRoute>} />
         <Route path="integrations" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><Integrations /></ProtectedRoute>} />
         <Route path="sales-dashboard" element={<ProtectedRoute type="CHIEF_ADMIN" roles={['ADMIN', 'MARKETING', 'MARKETING_LEAD']}><SalesDashboard /></ProtectedRoute>} />

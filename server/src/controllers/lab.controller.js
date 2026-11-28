@@ -8,6 +8,7 @@ const { locationWhere } = require('../utils/location');
 const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange, printedRangeText } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
+const { queueReportReadyIfComplete } = require('../utils/clientNotify');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 const { getCurrentActor } = require('../utils/auditContext');
 const { fastingPostLunchConflict } = require('../utils/testType');
@@ -292,6 +293,8 @@ async function releaseSample(req, res) {
 
   await sample.update({ status: 'RELEASED' });
   await sample.Report.update({ status: 'RELEASED', releasedAt: new Date(), releasedByUserId: req.user.id, releasedBy: getCurrentActor() });
+  // "Report ready" WhatsApp/SMS/email once every test on the bill is released.
+  if (sample.BillItem?.billId) queueReportReadyIfComplete(sample.BillItem.billId).catch(() => {});
   return res.json({ message: 'Report released' });
 }
 
