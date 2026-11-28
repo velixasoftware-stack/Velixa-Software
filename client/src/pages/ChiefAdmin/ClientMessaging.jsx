@@ -129,6 +129,10 @@ export default function ClientMessaging() {
               <Field label="Approved template - report" hint={`Values sent in order: ${(params.REPORT_RELEASED || []).map((p, i) => `{{${i + 1}}}=${p}`).join(', ')}`}>
                 <input value={cfg.whatsapp.templateReport} onChange={(e) => set('whatsapp', 'templateReport', e.target.value)} placeholder="e.g. report_ready" />
               </Field>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontWeight: 'normal', flex: '1 1 100%' }}>
+                <input type="checkbox" style={{ width: 16, height: 16 }} checked={!!cfg.whatsapp.templateReportDocument} onChange={(e) => set('whatsapp', 'templateReportDocument', e.target.checked)} />
+                The report template has a <strong>Document (PDF) header</strong> - send the report PDF in it
+              </label>
             </div>
             <p className="cell-sub" style={{ margin: '8px 0 0' }}>
               WhatsApp only lets a business start a chat with an <strong>approved template</strong>. Without a template name, the message
@@ -196,10 +200,28 @@ export default function ClientMessaging() {
                     </label>
                   ))}
                 </div>
+                {ev === 'REPORT_RELEASED' && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginTop: 6 }}>
+                    <span className="cell-sub">Send when:</span>
+                    {[['EACH', 'each test is released (approved)'], ['ALL', 'all tests on the bill are released']].map(([v, l]) => (
+                      <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontWeight: 'normal' }}>
+                        <input type="radio" name="sendOn" style={{ width: 'auto' }} checked={(cfg.events[ev].sendOn || 'ALL') === v} onChange={() => setEvent(ev, 'sendOn', v)} />{l}
+                      </label>
+                    ))}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontWeight: 'normal' }}>
+                      <input type="checkbox" style={{ width: 16, height: 16 }} checked={!!cfg.events[ev].attachPdf} onChange={(e) => setEvent(ev, 'attachPdf', e.target.checked)} />
+                      Attach report PDF (WhatsApp &amp; Gmail)
+                    </label>
+                  </div>
+                )}
                 <textarea rows={2} style={{ width: '100%', marginTop: 6 }} value={cfg.events[ev].text} onChange={(e) => setEvent(ev, 'text', e.target.value)} />
               </div>
             ))}
             <p className="cell-sub" style={{ margin: '4px 0 0' }}>Placeholders: {PLACEHOLDERS}</p>
+            <p className="cell-sub" style={{ margin: '4px 0 0' }}>
+              {'{reportLink}'} opens only this patient&apos;s released report, without login - it uses a random 32-character code, so it can&apos;t be
+              changed to reach anyone else&apos;s report.
+            </p>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0 0', fontWeight: 'normal' }}>
               <input type="checkbox" style={{ width: 16, height: 16 }} checked={cfg.usePlatformFallback} onChange={(e) => setCfg((c) => ({ ...c, usePlatformFallback: e.target.checked }))} />
               If this client has no own WhatsApp/Gmail account, send through the platform account (Integrations)

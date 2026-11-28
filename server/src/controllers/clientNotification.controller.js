@@ -11,11 +11,12 @@ const { EVENTS, DEFAULT_TEXT, TEMPLATE_PARAMS, sendTest } = require('../utils/cl
 
 const SECRETS = { whatsapp: ['accessToken'], sms: ['headers'], email: ['appPassword'] };
 const FIELDS = {
-  whatsapp: ['enabled', 'phoneNumberId', 'accessToken', 'language', 'templateBill', 'templateReport'],
+  whatsapp: ['enabled', 'phoneNumberId', 'accessToken', 'language', 'templateBill', 'templateReport', 'templateReportDocument'],
   sms: ['enabled', 'method', 'url', 'body', 'contentType', 'headers', 'senderId', 'dltTemplateBill', 'dltTemplateReport'],
   email: ['enabled', 'gmailAddress', 'appPassword', 'fromName'],
 };
 const hint = (v) => (v ? `••••${String(v).slice(-4)}` : '');
+const BOOLEANS = ['enabled', 'templateReportDocument'];
 
 function masked(cfg) {
   const out = { usePlatformFallback: !!cfg?.usePlatformFallback, events: {} };
@@ -23,12 +24,13 @@ function masked(cfg) {
     const src = cfg?.[ch] || {};
     out[ch] = {};
     for (const f of FIELDS[ch]) {
-      if (SECRETS[ch].includes(f)) { out[ch][f] = ''; out[ch][`${f}Saved`] = hint(src[f]); } else out[ch][f] = src[f] ?? (f === 'enabled' ? false : '');
+      if (SECRETS[ch].includes(f)) { out[ch][f] = ''; out[ch][`${f}Saved`] = hint(src[f]); } else out[ch][f] = BOOLEANS.includes(f) ? !!src[f] : (src[f] ?? '');
     }
   }
   for (const ev of EVENTS) {
     const e = cfg?.events?.[ev] || {};
     out.events[ev] = { whatsapp: !!e.whatsapp, sms: !!e.sms, email: !!e.email, text: e.text || DEFAULT_TEXT[ev] };
+    if (ev === 'REPORT_RELEASED') { out.events[ev].sendOn = e.sendOn === 'EACH' ? 'EACH' : 'ALL'; out.events[ev].attachPdf = !!e.attachPdf; }
   }
   return out;
 }
@@ -53,7 +55,7 @@ async function saveConfig(req, res) {
     next[ch] = {};
     for (const f of FIELDS[ch]) {
       let v = incoming[f];
-      if (f === 'enabled') { next[ch][f] = !!v; continue; }
+      if (BOOLEANS.includes(f)) { next[ch][f] = !!v; continue; }
       v = v == null ? '' : String(v).trim();
       // An empty secret box keeps the saved value; "-" clears it.
       if (SECRETS[ch].includes(f)) v = v === '' ? (prev[f] || '') : (v === '-' ? '' : v);
@@ -76,6 +78,7 @@ async function saveConfig(req, res) {
       email: !!e.email && next.email.enabled,
       text: String(e.text || '').trim() || DEFAULT_TEXT[ev],
     };
+    if (ev === 'REPORT_RELEASED') { events[ev].sendOn = e.sendOn === 'EACH' ? 'EACH' : 'ALL'; events[ev].attachPdf = !!e.attachPdf; }
   }
   const values = { ...next, events, usePlatformFallback: !!req.body.usePlatformFallback };
   if (existing) await existing.update(values);

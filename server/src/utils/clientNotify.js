@@ -47,16 +47,22 @@ async function withTimeout(promise, label) {
 
 /* ---------- channels ---------- */
 
-async function sendWhatsAppVia(cfg, to91, text, templateName, params) {
-  const body = templateName
-    ? {
-      messaging_product: 'whatsapp', to: to91, type: 'template',
-      template: {
-        name: templateName, language: { code: cfg.language || 'en' },
-        components: [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: String(p ?? '') })) }],
-      },
-    }
-    : { messaging_product: 'whatsapp', to: to91, type: 'text', text: { body: text } };
+// document: { link, filename } - the report PDF. With an approved template it
+// goes in the template's DOCUMENT header (only when the template has one -
+// headerDocument); without a template it's sent as a document with the text as
+// its caption (WhatsApp allows that only inside the 24-hour window).
+async function sendWhatsAppVia(cfg, to91, text, templateName, params, document = null, headerDocument = false) {
+  let body;
+  if (templateName) {
+    const components = [];
+    if (document && headerDocument) components.push({ type: 'header', parameters: [{ type: 'document', document }] });
+    components.push({ type: 'body', parameters: params.map((p) => ({ type: 'text', text: String(p ?? '') })) });
+    body = { messaging_product: 'whatsapp', to: to91, type: 'template', template: { name: templateName, language: { code: cfg.language || 'en' }, components } };
+  } else if (document) {
+    body = { messaging_product: 'whatsapp', to: to91, type: 'document', document: { ...document, caption: text } };
+  } else {
+    body = { messaging_product: 'whatsapp', to: to91, type: 'text', text: { body: text } };
+  }
   const res = await withTimeout(fetch(`https://graph.facebook.com/v19.0/${cfg.phoneNumberId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.accessToken}`, 'Content-Type': 'application/json' },
@@ -64,7 +70,7 @@ async function sendWhatsAppVia(cfg, to91, text, templateName, params) {
   }), 'WhatsApp');
   const out = await res.text();
   if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${out.slice(0, 300)}`);
-  return templateName ? `template ${templateName}` : 'text';
+  return `${templateName ? `template ${templateName}` : (document ? 'document' : 'text')}${document && (headerDocument || !templateName) ? ' + PDF' : ''}`;
 }
 
 async function sendSmsVia(cfg, m, text, dltTemplateId) {
@@ -90,15 +96,15 @@ async function sendSmsVia(cfg, m, text, dltTemplateId) {
   return out.slice(0, 200);
 }
 
-async function sendEmailVia(cfg, to, subject, text) {
+async function sendEmailVia(cfg, to, subject, text, attachments = []) {
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com', port: 465, secure: true,
     auth: { user: cfg.gmailAddress, pass: String(cfg.appPassword || '').replace(/\s+/g, '') },
   });
   const html = `<p>${String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')
     .replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`;
-  await withTimeout(transporter.sendMail({ from: cfg.fromName ? `"${cfg.fromName}" <${cfg.gmailAddress}>` : cfg.gmailAddress, to, subject, text, html }), 'Email');
-  return 'sent';
+  await withTimeout(transporter.sendMail({ from: cfg.fromName ? `"${cfg.fromName}" <${cfg.gmailAddress}>` : cfg.gmailAddress, to, subject, text, html, attachments }), 'Email');
+  return attachments.length ? 'sent + PDF' : 'sent';
 }
 
 /* ---------- which account a channel uses ---------- */
@@ -135,7 +141,7 @@ async function accountFor(channel, cfg) {
   return { reason: 'no Gmail account set for this client' };
 }
 
-async function deliver({ clientId, billId, event, channel, cfg, recipient, text, subject, templateName, templateParams, dltTemplateId }) {
+async function deliver({ clientId, billId, event, channel, cfg, recipient, text, subject, templateName, templateParams, dltTemplateId, document, headerDocument, attachments }) {
   const log = (status, detail) => NotificationLog.create({ clientId, billId, event, channel, recipient: recipient || null, status, detail: String(detail || '').slice(0, 1000) })
     .catch((e) => console.error('NotificationLog write failed:', e.message));
   const { account, platform, reason } = await accountFor(channel, cfg);
@@ -145,14 +151,14 @@ async function deliver({ clientId, billId, event, channel, cfg, recipient, text,
     if (channel === 'WHATSAPP') {
       const m = mobiles(recipient);
       if (!m) return log('SKIPPED', 'patient has no valid 10-digit mobile number');
-      info = await sendWhatsAppVia(account, m.mobile91, text, templateName, templateParams || []);
+      info = await sendWhatsAppVia(account, m.mobile91, text, templateName, templateParams || [], document, headerDocument);
     } else if (channel === 'SMS') {
       const m = mobiles(recipient);
       if (!m) return log('SKIPPED', 'patient has no valid 10-digit mobile number');
       info = await sendSmsVia(account, m, text, dltTemplateId);
     } else {
       if (!/^\S+@\S+\.\S+$/.test(String(recipient || ''))) return log('SKIPPED', 'patient has no email address');
-      info = await sendEmailVia(account, recipient, subject, text);
+      info = await sendEmailVia(account, recipient, subject, text, (attachments && await attachments()) || []);
     }
     return log('SENT', `${platform ? '[platform account] ' : ''}${info}`);
   } catch (err) {
@@ -202,6 +208,20 @@ async function notifyBillEvent(event, billId) {
   const subject = event === 'BILL_CREATED' ? `${data.labName} - Bill ${data.billNo}` : `${data.labName} - Your report is ready (${data.billNo})`;
   const isBill = event === 'BILL_CREATED';
   const base = { clientId: bill.clientId, billId: bill.id, event, cfg, text, subject };
+  // The report as a PDF: a link Meta downloads for WhatsApp (the same token
+  // as the report link - only this report), and an attachment for Gmail.
+  if (!isBill && ev.attachPdf && bill.reportToken) {
+    const filename = `Report-${String(bill.billNo).replace(/[^\w.-]+/g, '_')}.pdf`;
+    base.document = { link: `${PUBLIC_URL}/api/public/reports/${bill.reportToken}/pdf`, filename };
+    base.headerDocument = !!cfg.whatsapp?.templateReportDocument;
+    base.attachments = async () => {
+      const { buildBillReport } = require('../controllers/lab.controller'); // eslint-disable-line global-require
+      const { buildReportPdf } = require('./reportPdf'); // eslint-disable-line global-require
+      const full = await Bill.findByPk(bill.id, { include: [Patient, Client, { association: 'ReferralDoctor' }] }).catch(() => null);
+      const report = full && await buildBillReport(full);
+      return report ? [{ filename, content: await buildReportPdf(report), contentType: 'application/pdf' }] : [];
+    };
+  }
   const jobs = [];
   if (ev.whatsapp) {
     jobs.push(deliver({
@@ -220,27 +240,39 @@ function queueBillEvent(event, billId) {
   setImmediate(() => { notifyBillEvent(event, billId).catch((e) => console.error(`notify ${event} bill ${billId} failed:`, e.message)); });
 }
 
-// Bills whose "report ready" message is being sent right now: the lab screen
-// releases several tests at once, and each release could see "all released".
-const reportReadyInFlight = new Set();
+// Bills with a "report ready" message waiting to go: the lab screen releases
+// several tests at once - they're gathered into one message.
+const reportReadyPending = new Set();
+const REPORT_BATCH_MS = 20 * 1000;
 
-/** After a release: the "report ready" message goes once every test on the bill is released. */
+/**
+ * After a release. sendOn EACH: a message for every release (tests released
+ * together within ~20s share one). sendOn ALL (default): one message once
+ * every test on the bill is released.
+ */
 async function queueReportReadyIfComplete(billId) {
-  const samples = await Sample.findAll({ attributes: ['status'], include: [{ model: BillItem, attributes: ['status'], where: { billId } }] });
-  const active = samples.filter((s) => s.BillItem?.status !== 'CANCELLED');
-  if (!(active.length > 0 && active.every((s) => s.status === 'RELEASED'))) return;
-  if (reportReadyInFlight.has(billId)) return;
-  // Already sent in the last few minutes (e.g. a second release request) - don't repeat it.
-  const recent = await NotificationLog.count({
-    where: { billId, event: 'REPORT_RELEASED', createdAt: { [require('sequelize').Op.gte]: new Date(Date.now() - 5 * 60 * 1000) } },
-  });
-  if (recent) return;
-  reportReadyInFlight.add(billId);
-  setImmediate(() => {
+  const bill = await Bill.findByPk(billId, { attributes: ['id', 'clientId'] });
+  if (!bill) return;
+  const cfg = await ClientNotificationConfig.findOne({ where: { clientId: bill.clientId }, attributes: ['events'] });
+  const ev = cfg?.events?.REPORT_RELEASED;
+  if (!ev || !(ev.whatsapp || ev.sms || ev.email)) return;
+  if (reportReadyPending.has(billId)) return; // already gathered into a message about to go
+  if (ev.sendOn !== 'EACH') {
+    const samples = await Sample.findAll({ attributes: ['status'], include: [{ model: BillItem, attributes: ['status'], where: { billId } }] });
+    const active = samples.filter((s) => s.BillItem?.status !== 'CANCELLED');
+    if (!(active.length > 0 && active.every((s) => s.status === 'RELEASED'))) return;
+    // Already sent in the last few minutes (e.g. a second release request) - don't repeat it.
+    const recent = await NotificationLog.count({
+      where: { billId, event: 'REPORT_RELEASED', createdAt: { [require('sequelize').Op.gte]: new Date(Date.now() - 5 * 60 * 1000) } },
+    });
+    if (recent) return;
+  }
+  reportReadyPending.add(billId);
+  setTimeout(() => {
     notifyBillEvent('REPORT_RELEASED', billId)
       .catch((e) => console.error(`notify REPORT_RELEASED bill ${billId} failed:`, e.message))
-      .finally(() => setTimeout(() => reportReadyInFlight.delete(billId), 60 * 1000));
-  });
+      .finally(() => reportReadyPending.delete(billId));
+  }, ev.sendOn === 'EACH' ? REPORT_BATCH_MS : 1000);
 }
 
 /** A test message on one channel from Chief Admin's screen, using the saved settings. */

@@ -9,6 +9,7 @@ const { buildParameterInsight } = require('../utils/trendInsights');
 const { resolveNormalRange, printedRangeText } = require('../utils/normalRange');
 const { sendEmail, sendWhatsApp } = require('../utils/notify');
 const { queueReportReadyIfComplete } = require('../utils/clientNotify');
+const { buildReportPdf } = require('../utils/reportPdf');
 const { sortParameters, sortResultsByParameter } = require('../utils/parameterOrder');
 const { getCurrentActor } = require('../utils/auditContext');
 const { fastingPostLunchConflict } = require('../utils/testType');
@@ -385,6 +386,22 @@ async function getPublicReport(req, res) {
   const report = bill && await buildBillReport(bill);
   if (!report) return res.status(404).json({ message: 'Report not found' });
   return res.json({ ...report, reportToken: token, isPublic: true });
+}
+
+// GET /api/public/reports/:token/pdf - the same report (released tests only)
+// as a PDF, for the WhatsApp/email attachment and the Download PDF button.
+// Same rule as above: only the exact random token opens it, no login.
+async function getPublicReportPdf(req, res) {
+  const token = String(req.params.token || '');
+  if (!/^[a-f0-9]{32}$/.test(token)) return res.status(404).json({ message: 'Report not found' });
+  const bill = await Bill.findOne({ where: { reportToken: token }, include: [Patient, Client, ReferralDoctor, Payor] });
+  const report = bill && await buildBillReport(bill);
+  if (!report) return res.status(404).json({ message: 'Report not found' });
+  const pdf = await buildReportPdf(report);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="Report-${String(report.bill.billNo).replace(/[^\w.-]+/g, '_')}.pdf"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.send(pdf);
 }
 
 /** The released report for one bill (null when nothing is released yet). */
@@ -876,4 +893,5 @@ async function getBillTrendReport(req, res) {
 module.exports = {
   listSamples, getSample, collectSample, collectSamples, enterResults, verifySample, releaseSample, revokeReport, revokeReports, getBillReport, getPublicReport, getBillTrendReport, shareReport,
   getPreviousResults, getPendingTests,
+  getPublicReportPdf, buildBillReport,
 };

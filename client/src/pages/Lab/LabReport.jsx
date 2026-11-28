@@ -579,6 +579,19 @@ export default function LabReport({ publicToken } = {}) {
         )}
         <div className="report-toolbar-actions">
           {!publicToken && <ShareButton apiPath={`/report-view/bills/${billId}/report/share`} />}
+          {/* The server-made PDF (the one sent on WhatsApp/email) - opened by the
+              report's own random token, so it works on the patient's link too. */}
+          {report.reportToken && (
+            <a
+              className="button secondary"
+              href={`${api.defaults.baseURL}/public/reports/${report.reportToken}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', textDecoration: 'none', color: '#0f172a', fontWeight: 600, fontSize: 14 }}
+            >
+              Download PDF
+            </a>
+          )}
           <button onClick={() => window.print()}>Print Report</button>
         </div>
       </div>

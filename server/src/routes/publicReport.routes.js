@@ -4,5 +4,6 @@ const labCtrl = require('../controllers/lab.controller');
 
 // No login: the link in a report's QR code (see getPublicReport).
 router.get('/reports/:token', publicReportLimiter, labCtrl.getPublicReport);
+router.get('/reports/:token/pdf', publicReportLimiter, labCtrl.getPublicReportPdf);
 
 module.exports = router;
